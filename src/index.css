@@ -1,0 +1,51 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=Playfair+Display:ital,wght@0,600;1,600&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Playfair Display", serif;
+  
+  --color-brand-bg: #FFFFFF;
+  --color-brand-card: #F8FAFC;
+  --color-brand-border: #E2E8F0;
+  --color-brand-accent: #0038A8;
+  --color-brand-secondary: #EAB308;
+  --color-brand-text-dim: #475569;
+  --color-brand-text-bright: #0F172A;
+}
+
+@layer base {
+  body {
+    @apply bg-brand-bg text-brand-text-bright font-sans antialiased;
+  }
+  
+  h1, h2, h3, h4 {
+    @apply font-display tracking-tight text-brand-text-bright;
+  }
+
+  input, select, textarea {
+    @apply bg-white border-slate-300 text-brand-text-bright focus:ring-brand-accent focus:border-brand-accent transition-all duration-200 outline-hidden;
+  }
+}
+
+@layer components {
+  .glass-card {
+    @apply bg-white border border-brand-border rounded-xl shadow-sm hover:shadow-md transition-shadow;
+  }
+  
+  .btn-primary {
+    @apply bg-brand-accent text-white px-6 py-3 rounded-md font-semibold text-sm transition-all hover:bg-blue-900 disabled:opacity-50 shadow-md;
+  }
+  
+  .btn-outline {
+    @apply bg-transparent border border-brand-accent text-brand-accent px-6 py-3 rounded-md font-semibold text-sm transition-all hover:bg-slate-50 disabled:opacity-50;
+  }
+
+  .nav-link {
+    @apply text-brand-text-bright text-[13px] font-bold uppercase tracking-widest hover:text-brand-accent transition-colors py-2;
+  }
+
+  .nav-link.active {
+    @apply text-brand-accent border-b-2 border-brand-accent pb-1;
+  }
+}
