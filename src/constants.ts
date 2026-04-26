@@ -7,7 +7,7 @@ export const MUNICIPAL_BRANDING = {
   name: "Maragusan",
   fullName: "Municipality of Maragusan",
   province: "Davao de Oro",
-  portalName: "Municipal Portal",
+  portalName: "Municipal Digital Portal",
   
   // Official Logo Assets
   logo: {

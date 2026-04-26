@@ -169,26 +169,7 @@ const LandingPage = () => {
       </section>
 
       {/* Stats Section */}
-      <section className="bg-slate-50 border-y border-brand-border py-20">
-        <div className="max-w-5xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-12 text-center">
-          <div>
-            <div className="font-display text-5xl mb-2 text-brand-accent">24/7</div>
-            <div className="text-[10px] uppercase tracking-widest text-brand-text-dim font-bold">Uptime Guarantee</div>
-          </div>
-          <div>
-            <div className="font-display text-5xl mb-2 text-brand-accent">12ms</div>
-            <div className="text-[10px] uppercase tracking-widest text-brand-text-dim font-bold">Response Latency</div>
-          </div>
-          <div>
-            <div className="font-display text-5xl mb-2 text-brand-accent">99%</div>
-            <div className="text-[10px] uppercase tracking-widest text-brand-text-dim font-bold">Digital Adoption</div>
-          </div>
-          <div>
-            <div className="font-display text-5xl mb-2 text-brand-accent">0</div>
-            <div className="text-[10px] uppercase tracking-widest text-brand-text-dim font-bold">System Downtime</div>
-          </div>
-        </div>
-      </section>
+  
 
       {/* Contact Section */}
       <section className="px-6 py-20 flex flex-col items-center text-center space-y-12">

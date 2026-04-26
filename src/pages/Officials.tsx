@@ -32,7 +32,7 @@ const Officials = () => {
   const [vmImgError, setVmImgError] = React.useState(false);
 
   return (
-    <div className="min-h-screen bg-brand-bg pt-32 pb-20 overflow-x-hidden">
+    <div className="min-h-screen bg-brand-bg pt-10 pb-20 overflow-x-hidden">
       <div className="max-w-7xl mx-auto px-6 space-y-24">
         
         {/* Header Section */}
@@ -82,17 +82,17 @@ const Officials = () => {
                 <Award size={120} aria-hidden="true" />
               </div>
               <div className="flex flex-col items-center gap-10 text-center relative z-10">
-                <div className="w-48 h-48 rounded-[2rem] bg-brand-bg overflow-hidden flex items-center justify-center border-2 border-brand-border group-hover:border-brand-accent/30 transition-all shadow-inner relative">
+                <div className="w-64 h-64 md:w-80 md:h-80 rounded-[3rem] bg-brand-bg overflow-hidden flex items-center justify-center border-2 border-brand-border group-hover:border-brand-accent/30 transition-all shadow-inner relative">
                   {mayor.img && !mayorImgError ? (
                     <img 
                       src={mayor.img} 
                       alt={`Portrait of ${mayor.name}`} 
                       onError={() => setMayorImgError(true)}
-                      className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-700" 
+                      className="w-full h-full object-cover transition-all duration-700 hover:scale-105" 
                       referrerPolicy="no-referrer"
                     />
                   ) : (
-                    <User size={80} className="text-brand-accent/20" aria-hidden="true" />
+                    <User size={120} className="text-brand-accent/20" aria-hidden="true" />
                   )}
                 </div>
                 <div className="space-y-4 max-w-xl mx-auto">

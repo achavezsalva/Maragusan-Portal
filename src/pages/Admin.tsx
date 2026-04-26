@@ -22,7 +22,7 @@ import {
   Activity,
   UserPlus
 } from 'lucide-react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 
 interface Department {
   id: string;
@@ -124,13 +124,21 @@ const Admin: React.FC = () => {
     }
   };
 
-  const handleUpdateRole = async (uid: string, role: string, deptId?: string) => {
-    await updateDoc(doc(db, 'users', uid), { 
-      role,
-      department_id: deptId || null 
-    });
-    if (selectedUser?.uid === uid) {
-      setSelectedUser(prev => prev ? { ...prev, role: role as any, department_id: deptId } : null);
+  const handleUpdateRole = async (uid: string, role: string, deptId?: string | null) => {
+    // If setting to staff, keep current deptId unless a new one is provided.
+    // If setting to non-staff, clear deptId.
+    const finalDeptId = role === 'staff' ? (deptId !== undefined ? deptId : selectedUser?.department_id || null) : null;
+    
+    try {
+      await updateDoc(doc(db, 'users', uid), { 
+        role,
+        department_id: finalDeptId 
+      });
+      if (selectedUser?.uid === uid) {
+        setSelectedUser(prev => prev ? { ...prev, role: role as any, department_id: finalDeptId || undefined } : null);
+      }
+    } catch (err) {
+      console.error('Role update failed:', err);
     }
   };
 
@@ -391,43 +399,51 @@ const Admin: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="grid md:grid-cols-2 gap-8 pt-8 border-t border-brand-border">
+                <div className="space-y-8 pt-8 border-t border-brand-border">
                   <div className="space-y-4">
                     <label className="text-[10px] font-black uppercase tracking-widest text-brand-text-dim">Reassign Identity Tier</label>
-                    <div className="grid gap-2">
+                    <div className="grid grid-cols-3 gap-3">
                       {(['citizen', 'staff', 'admin'] as const).map(r => (
                         <button
                           key={r}
-                          onClick={() => handleUpdateRole(selectedUser.uid, r, selectedUser.department_id)}
-                          className={`w-full text-left p-4 rounded-lg border transition-all text-[10px] font-black uppercase tracking-widest flex items-center justify-between ${
+                          onClick={() => handleUpdateRole(selectedUser.uid, r)}
+                          className={`text-center py-3 rounded-lg border transition-all text-[9px] font-black uppercase tracking-widest ${
                             selectedUser.role === r 
                               ? 'border-brand-accent bg-brand-accent/10 text-brand-accent' 
                               : 'border-brand-border bg-white/5 hover:border-brand-text-dim'
                           }`}
                         >
                           {r}
-                          {selectedUser.role === r && <div className="w-1.5 h-1.5 bg-brand-accent rounded-full"></div>}
                         </button>
                       ))}
                     </div>
                   </div>
 
-                  <div className="space-y-4">
-                    <label className={`text-[10px] font-black uppercase tracking-widest ${selectedUser.role === 'staff' ? 'text-brand-text-dim' : 'text-brand-text-dim/30'}`}>Sector Assignment</label>
-                    <div className={`grid gap-2 ${selectedUser.role !== 'staff' && 'opacity-30 pointer-events-none'}`}>
-                      <select 
-                        value={selectedUser.department_id || ''}
-                        onChange={(e) => handleUpdateRole(selectedUser.uid, 'staff', e.target.value)}
-                        className="w-full bg-brand-bg border border-brand-border rounded-lg text-[10px] font-bold uppercase tracking-widest p-4 appearance-none hover:border-brand-accent transition-all"
+                  <AnimatePresence>
+                    {selectedUser.role === 'staff' && (
+                      <motion.div 
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="overflow-hidden space-y-4"
                       >
-                        <option value="">Unassigned Reserve</option>
-                        {departments.map(d => (
-                          <option key={d.id} value={d.id}>{d.department_name}</option>
-                        ))}
-                      </select>
-                      <p className="text-[9px] text-brand-text-dim mt-2 leading-relaxed uppercase tracking-wider">Note: Sector assignment is strictly professional to administrative tier identities.</p>
-                    </div>
-                  </div>
+                        <label className="text-[10px] font-black uppercase tracking-widest text-brand-text-dim">Sector Assignment</label>
+                        <div className="grid gap-2">
+                          <select 
+                            value={selectedUser.department_id || ''}
+                            onChange={(e) => handleUpdateRole(selectedUser.uid, 'staff', e.target.value)}
+                            className="w-full bg-brand-bg border border-brand-border rounded-lg text-[10px] font-bold uppercase tracking-widest p-4 appearance-none hover:border-brand-accent transition-all cursor-pointer"
+                          >
+                            <option value="">Unassigned Reserve</option>
+                            {departments.map(d => (
+                              <option key={d.id} value={d.id}>{d.department_name}</option>
+                            ))}
+                          </select>
+                          <p className="text-[9px] text-brand-text-dim mt-2 leading-relaxed uppercase tracking-wider">Note: Sector assignment is strictly professional to administrative tier identities.</p>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
 
                 <div className="bg-brand-accent/5 p-6 border border-brand-accent/20 rounded-xl space-y-2">

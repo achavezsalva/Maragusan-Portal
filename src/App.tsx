@@ -316,7 +316,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
             {MUNICIPAL_BRANDING.name} <span className="italic text-brand-accent">{MUNICIPAL_BRANDING.portalName}</span>
           </div>
           <div className="text-brand-text-dim text-[11px] uppercase tracking-[0.2em]">
-            © {new Date().getFullYear()} {MUNICIPAL_BRANDING.fullName} • Digital Integrity Guaranteed
+            © {new Date().getFullYear()} {MUNICIPAL_BRANDING.fullName} • DESIGNED by: ARTCHIE SALVA
           </div>
           <nav className="flex gap-6" aria-label="Footer links">
              <Link to="/feedback" className="nav-link text-[10px]">Contact</Link>
