@@ -23,16 +23,16 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 
 const HERO_SLIDES = [
-  '/slide1.jpg.jpg',
-  '/slide2.jpg.jpg',
-  '/slide3.jpg.jpg',
-  '/slide4.jpg.jpg',
-  '/slide5.jpg.jpg',
-  '/slide6.jpg.jpg',
-  '/slide7.jpg.jpg',
-  '/slide8.jpg.jpg',
-  '/slide9.jpg.jpg',
-  '/slide10.jpg.jpg',
+  '/img/slide1.jpg.jpg',
+  '/img/slide2.jpg.jpg',
+  '/img/slide3.jpg.jpg',
+  '/img/slide4.jpg.jpg',
+  '/img/slide5.jpg.jpg',
+  '/img/slide6.jpg.jpg',
+  '/img/slide7.jpg.jpg',
+  '/img/slide8.jpg.jpg',
+  '/img/slide9.jpg.jpg',
+  '/img/slide10.jpg.jpg',
 ];
 
 const LandingPage = () => {
@@ -49,9 +49,13 @@ const LandingPage = () => {
   return (
     <div className="space-y-32">
       {/* Hero Section */}
-      <section className="relative -mt-24 overflow-hidden min-h-[90vh] flex items-center">
+      <section 
+        className="relative -mt-24 overflow-hidden min-h-[90vh] flex items-center"
+        aria-roledescription="carousel"
+        aria-label="Maragusan Highlights Slideshow"
+      >
         {/* Background Slideshow with Overlay */}
-        <div className="absolute inset-0 z-0">
+        <div className="absolute inset-0 z-0" aria-live="polite">
           <AnimatePresence mode="wait">
             <motion.img 
               key={currentSlide}
@@ -79,7 +83,7 @@ const LandingPage = () => {
             className="space-y-6 max-w-5xl mx-auto"
           >
             <div className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 backdrop-blur-md rounded-full border border-white/20 text-white text-[10px] font-black uppercase tracking-[0.2em] shadow-2xl">
-              <Shield size={12} className="text-brand-secondary" />
+              <Shield size={12} className="text-brand-secondary" aria-hidden="true" />
               Official Municipal Interface
             </div>
             <h1 className="text-6xl md:text-8xl font-display leading-[1] tracking-tight text-white drop-shadow-2xl">
@@ -88,14 +92,18 @@ const LandingPage = () => {
             </h1>
             <p className="text-slate-100 text-lg md:text-xl font-medium leading-relaxed max-w-2xl mx-auto drop-shadow-md">
               Access the digital heart of Maragusan. Our unified portal streamlines administrative 
-              services and fosters absolute transparency for bawat mamamayan.
+              services and fosters absolute transparency for every <span className="text-brand-secondary text-2xl md:text-3xl font-black italic inline-block transform hover:scale-110 transition-transform cursor-default ml-1">MARAGUSANON</span>
             </p>
           </motion.div>
 
           <div className="flex flex-col sm:flex-row justify-center gap-6 pt-6">
-            <button onClick={() => navigate('/directory')} className="btn-primary px-10 py-5 text-base cursor-pointer hover:scale-105 active:scale-95 transition-transform flex items-center gap-3 mx-auto shadow-2xl">
+            <button 
+              onClick={() => navigate('/directory')} 
+              className="btn-primary px-10 py-5 text-base cursor-pointer hover:scale-105 active:scale-95 transition-transform flex items-center gap-3 mx-auto shadow-2xl focus:ring-4 focus:ring-brand-accent/50 outline-none"
+              aria-label="Explore Institutional Directory"
+            >
               Explore Institutional Directory
-              <ArrowRight size={18} />
+              <ArrowRight size={18} aria-hidden="true" />
             </button>
           </div>
         </div>
@@ -112,7 +120,7 @@ const LandingPage = () => {
               className="relative aspect-video rounded-3xl overflow-hidden shadow-2xl group"
             >
               <img 
-                src="/municipal_hall.jpg.jpg" 
+                src="/img/municipal_hall.jpg.jpg" 
                 alt="Maragusan Municipal Hall" 
                 className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
                 referrerPolicy="no-referrer"
@@ -145,12 +153,12 @@ const LandingPage = () => {
 
               <div className="grid grid-cols-2 gap-6 pt-4">
                 <div className="p-6 bg-slate-50 border border-brand-border rounded-2xl space-y-2">
-                  <Landmark className="text-brand-accent" size={24} />
+                  <Landmark className="text-brand-accent" size={24} aria-hidden="true" />
                   <div className="text-xs font-bold uppercase tracking-wider text-brand-text-bright">Modern Offices</div>
                   <p className="text-[10px] text-brand-text-dim leading-tight">Equipped with digital infrastructure for efficient processing.</p>
                 </div>
                 <div className="p-6 bg-slate-50 border border-brand-border rounded-2xl space-y-2">
-                  <Shield className="text-brand-accent" size={24} />
+                  <Shield className="text-brand-accent" size={24} aria-hidden="true" />
                   <div className="text-xs font-bold uppercase tracking-wider text-brand-text-bright">Public Hub</div>
                   <p className="text-[10px] text-brand-text-dim leading-tight">Designed to be accessible and welcoming to every Maraguseno.</p>
                 </div>

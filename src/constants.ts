@@ -11,7 +11,7 @@ export const MUNICIPAL_BRANDING = {
   
   // Official Logo Assets
   logo: {
-    seal: "https://maragusan.gov.ph/attachment/mun_logo/logo_lgu_new.png",
+    seal: "/about-img/logo_lgu_new.png",
     alt: "Municipality of Maragusan Official Seal",
   },
   

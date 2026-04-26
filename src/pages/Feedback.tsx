@@ -87,7 +87,7 @@ const Feedback: React.FC = () => {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div className="space-y-2">
           <h1 className="text-4xl font-display uppercase tracking-tight flex items-center gap-4">
-            <MessageSquare className="text-brand-accent" size={36} strokeWidth={1} />
+            <MessageSquare className="text-brand-accent" size={36} strokeWidth={1} aria-hidden="true" />
             Civic Outreach
           </h1>
           <p className="text-brand-text-dim text-sm uppercase tracking-widest">Community Engagement Resource Channel</p>
@@ -102,8 +102,10 @@ const Feedback: React.FC = () => {
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
                 className="absolute inset-x-0 top-0 bg-green-500 text-brand-bg py-2 flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest"
+                role="status"
+                aria-live="polite"
               >
-                <CheckCircle2 size={12} /> Communication Transmitted Successfully
+                <CheckCircle2 size={12} aria-hidden="true" /> Communication Transmitted Successfully
               </motion.div>
             )}
 
@@ -114,21 +116,22 @@ const Feedback: React.FC = () => {
 
             <form onSubmit={handleSubmit} className="space-y-8">
               <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase tracking-widest text-brand-text-dim ml-1">Engagement Brief</label>
+                <label id="engagement-brief-label" className="text-[10px] font-black uppercase tracking-widest text-brand-text-dim ml-1">Engagement Brief</label>
                 <textarea 
                   rows={8}
                   required
                   value={text}
                   onChange={e => setText(e.target.value)}
-                  className="w-full bg-brand-bg/50 border border-brand-border rounded-lg p-6 focus:ring-1 focus:ring-brand-accent text-sm"
+                  className="w-full bg-brand-bg/50 border border-brand-border rounded-lg p-6 focus:ring-1 focus:ring-brand-accent text-sm outline-none transition-all"
                   placeholder="Draft your detailed observation or suggestion for municipal review..."
                   disabled={!user}
+                  aria-labelledby="engagement-brief-label"
                 />
               </div>
 
               {!user ? (
-                <div className="bg-brand-accent/5 p-4 rounded-lg flex gap-3 text-brand-accent border border-brand-accent/20 text-[10px] uppercase font-black tracking-widest">
-                  <AlertCircle size={16} className="text-brand-accent flex-shrink-0" />
+                <div className="bg-brand-accent/5 p-4 rounded-lg flex gap-3 text-brand-accent border border-brand-accent/20 text-[10px] uppercase font-black tracking-widest" role="alert">
+                  <AlertCircle size={16} className="text-brand-accent flex-shrink-0" aria-hidden="true" />
                   Electronic Identity Required for Submission
                 </div>
               ) : (
@@ -161,9 +164,9 @@ const Feedback: React.FC = () => {
             {user && messages.length > 0 && <span className="text-[10px] font-bold text-brand-accent">{messages.length} ENTRIES</span>}
           </div>
 
-          <div className="space-y-6 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
+          <div className="space-y-6 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar" role="list" aria-label="Feedback history">
             {loading ? (
-              <div className="space-y-4">
+              <div className="space-y-4" aria-busy="true" aria-label="Loading history">
                 {[1,2,3].map(i => <div key={i} className="bg-brand-card h-24 rounded-xl border border-brand-border animate-pulse"></div>)}
               </div>
             ) : !user ? (
@@ -172,7 +175,7 @@ const Feedback: React.FC = () => {
               </div>
             ) : messages.length > 0 ? (
               messages.map(m => (
-                <div key={m.id} className="glass-card p-6 space-y-4 hover:border-brand-accent transition-colors group">
+                <div key={m.id} className="glass-card p-6 space-y-4 hover:border-brand-accent transition-colors group" role="listitem">
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] font-bold text-brand-text-dim uppercase tracking-widest">
                       {m.created_at?.seconds ? format(m.created_at.toDate(), 'MMMM d') : 'Pending'}

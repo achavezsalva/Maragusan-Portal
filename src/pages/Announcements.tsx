@@ -143,10 +143,12 @@ const Announcements: React.FC = () => {
         )}
       </div>
 
-      <div className="flex flex-wrap items-center gap-4 border-b border-brand-border pb-8">
+      <div className="flex flex-wrap items-center gap-4 border-b border-brand-border pb-8" role="tablist" aria-label="Department filters">
         <button 
           onClick={() => setFilterDept('all')}
           className={`px-4 py-2 text-[10px] uppercase font-black tracking-[0.2em] transition-all border-b-2 ${filterDept === 'all' ? 'border-brand-accent text-brand-accent' : 'border-transparent text-brand-text-dim hover:text-brand-text-bright'}`}
+          role="tab"
+          aria-selected={filterDept === 'all'}
         >
           All Briefings
         </button>
@@ -155,6 +157,8 @@ const Announcements: React.FC = () => {
             key={dept.id}
             onClick={() => setFilterDept(dept.id)}
             className={`px-4 py-2 text-[10px] uppercase font-black tracking-[0.2em] transition-all border-b-2 ${filterDept === dept.id ? 'border-brand-accent text-brand-accent' : 'border-transparent text-brand-text-dim hover:text-brand-text-bright'}`}
+            role="tab"
+            aria-selected={filterDept === dept.id}
           >
             {dept.department_name}
           </button>
@@ -162,13 +166,13 @@ const Announcements: React.FC = () => {
       </div>
 
       {loading ? (
-        <div className="flex justify-center py-20">
+        <div className="flex justify-center py-20" aria-busy="true" aria-label="Loading briefings">
           <div className="w-10 h-10 border-2 border-brand-accent/20 border-t-brand-accent rounded-full animate-spin"></div>
         </div>
       ) : (
-        <div className="grid gap-10">
+        <div className="grid gap-10" role="list">
           {filteredAnnouncements.map((ann) => (
-            <article key={ann.id} className="glass-card p-10 space-y-8 relative group">
+            <article key={ann.id} className="glass-card p-10 space-y-8 relative group" role="listitem">
               <div className="flex justify-between items-start">
                 <div className="space-y-2">
                   <span className="inline-block px-3 py-1 border border-brand-accent text-brand-accent rounded-full text-[9px] font-black uppercase tracking-widest">
@@ -178,7 +182,7 @@ const Announcements: React.FC = () => {
                     {ann.created_at?.seconds ? format(ann.created_at.toDate(), 'MMMM d, yyyy') : 'Recently Published'}
                   </p>
                 </div>
-
+ 
                 {(isAdmin || (isStaff && ann.author_id === user?.uid)) && (
                   <div className="flex gap-4">
                     <button 
@@ -190,14 +194,16 @@ const Announcements: React.FC = () => {
                         setShowModal(true);
                       }}
                       className="text-brand-text-dim hover:text-brand-accent transition-colors"
+                      aria-label={`Edit announcement ${ann.title}`}
                     >
-                      <Edit2 size={16} />
+                      <Edit2 size={16} aria-hidden="true" />
                     </button>
                     <button 
                       onClick={() => handleDelete(ann.id)}
                       className="text-brand-text-dim hover:text-red-400 transition-colors"
+                      aria-label={`Delete announcement ${ann.title}`}
                     >
-                      <Trash2 size={16} />
+                      <Trash2 size={16} aria-hidden="true" />
                     </button>
                   </div>
                 )}
@@ -234,34 +240,39 @@ const Announcements: React.FC = () => {
             initial={{ scale: 0.95, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             className="bg-brand-card w-full max-w-2xl rounded-2xl border border-brand-border overflow-hidden shadow-3xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="briefing-modal-title"
           >
             <div className="p-8 border-b border-brand-border flex justify-between items-center bg-white/5">
-              <h3 className="font-display text-2xl tracking-tight">{isEditing ? 'Curate Briefing' : 'New Publication'}</h3>
-              <button onClick={resetForm} className="text-brand-text-dim hover:text-brand-text-bright transition-colors">
-                <X size={24} />
+              <h3 id="briefing-modal-title" className="font-display text-2xl tracking-tight">{isEditing ? 'Curate Briefing' : 'New Publication'}</h3>
+              <button onClick={resetForm} className="text-brand-text-dim hover:text-brand-text-bright transition-colors" aria-label="Close dialog">
+                <X size={24} aria-hidden="true" />
               </button>
             </div>
             
             <form onSubmit={handleSubmit} className="p-10 space-y-8">
               <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase tracking-widest text-brand-text-dim ml-1">Title</label>
+                <label id="title-label" className="text-[10px] font-black uppercase tracking-widest text-brand-text-dim ml-1">Title</label>
                 <input 
                   type="text" 
                   value={title}
                   onChange={e => setTitle(e.target.value)}
-                  className="w-full p-4 border border-brand-border rounded-lg bg-brand-bg/50"
+                  className="w-full p-4 border border-brand-border rounded-lg bg-brand-bg/50 focus:ring-2 focus:ring-brand-accent/50 outline-none transition-all"
                   placeholder="Publication Heading"
+                  aria-labelledby="title-label"
                   required
                 />
               </div>
 
               <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase tracking-widest text-brand-text-dim ml-1">Section</label>
+                <label id="section-label" className="text-[10px] font-black uppercase tracking-widest text-brand-text-dim ml-1">Section</label>
                 <select 
                   value={deptId}
                   onChange={e => setDeptId(e.target.value)}
                   disabled={isStaff && !isAdmin}
-                  className="w-full p-4 border border-brand-border rounded-lg bg-brand-bg/50 appearance-none"
+                  className="w-full p-4 border border-brand-border rounded-lg bg-brand-bg/50 appearance-none focus:ring-2 focus:ring-brand-accent/50 outline-none transition-all"
+                  aria-labelledby="section-label"
                   required
                 >
                   <option value="">Select Section</option>
@@ -272,13 +283,14 @@ const Announcements: React.FC = () => {
               </div>
 
               <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase tracking-widest text-brand-text-dim ml-1">Content</label>
+                <label id="content-label" className="text-[10px] font-black uppercase tracking-widest text-brand-text-dim ml-1">Content</label>
                 <textarea 
                   rows={6}
                   value={content}
                   onChange={e => setContent(e.target.value)}
-                  className="w-full p-4 border border-brand-border rounded-lg bg-brand-bg/50"
+                  className="w-full p-4 border border-brand-border rounded-lg bg-brand-bg/50 focus:ring-2 focus:ring-brand-accent/50 outline-none transition-all"
                   placeholder="Draft communication content..."
+                  aria-labelledby="content-label"
                   required
                 />
               </div>

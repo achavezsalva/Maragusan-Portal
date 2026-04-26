@@ -5,7 +5,7 @@ import {
   addDoc, 
   deleteDoc, 
   doc, 
-  updateDoc,
+  updateDoc,  
   query,
   limit,
   where
@@ -156,13 +156,13 @@ const Admin: React.FC = () => {
       <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 border-b border-brand-border pb-8">
         <div className="space-y-2">
           <h1 className="text-4xl font-display uppercase tracking-tight flex items-center gap-4">
-            <Shield className="text-brand-accent" size={36} strokeWidth={1} />
+            <Shield className="text-brand-accent" size={36} strokeWidth={1} aria-hidden="true" />
             Command Center
           </h1>
           <p className="text-brand-text-dim text-[11px] uppercase tracking-[0.3em]">Municipal System Adjudication & Oversight</p>
         </div>
         
-        <div className="flex items-center gap-6 text-[10px] uppercase font-black tracking-widest text-brand-text-dim">
+        <div className="flex items-center gap-6 text-[10px] uppercase font-black tracking-widest text-brand-text-dim" role="status" aria-label="System status">
            <div className="flex items-center gap-2">
              <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></div>
              System Nominal
@@ -232,9 +232,10 @@ const Admin: React.FC = () => {
                    }}
                    placeholder="New Sector Name"
                    className="flex-1 bg-brand-bg border border-brand-border rounded-lg px-4 py-2 text-[10px] font-bold uppercase tracking-widest appearance-none outline-hidden focus:border-brand-accent transition-all"
+                   aria-label="New sector name"
                  />
-                 <button className="text-brand-accent hover:opacity-80 transition-opacity">
-                   <Plus size={20} />
+                 <button className="text-brand-accent hover:opacity-80 transition-opacity" aria-label="Register new sector">
+                   <Plus size={20} aria-hidden="true" />
                  </button>
                </div>
                {errorMessage && (
@@ -249,9 +250,9 @@ const Admin: React.FC = () => {
              </form>
           </div>
 
-          <div className="grid gap-4 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
+          <div className="grid gap-4 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar" role="list" aria-label="Department list">
             {departments.map((dept) => (
-              <div key={dept.id} className="glass-card p-6 flex items-center justify-between group hover:border-brand-accent transition-colors">
+              <div key={dept.id} className="glass-card p-6 flex items-center justify-between group hover:border-brand-accent transition-colors" role="listitem">
                 <div className="space-y-1">
                   <div className="font-bold text-lg text-brand-text-bright">{dept.department_name}</div>
                   <div className="text-[10px] text-brand-text-dim uppercase tracking-widest">Registry ID: {dept.id.slice(0, 8).toUpperCase()}</div>
@@ -259,8 +260,9 @@ const Admin: React.FC = () => {
                 <button 
                   onClick={() => setDeptToDelete(dept)}
                   className="text-brand-text-dim hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all font-bold text-[10px] flex items-center gap-2"
+                  aria-label={`Decommission sector ${dept.department_name}`}
                 >
-                  <Trash2 size={16} />
+                  <Trash2 size={16} aria-hidden="true" />
                 </button>
               </div>
             ))}
@@ -305,12 +307,20 @@ const Admin: React.FC = () => {
              </div>
           </div>
           
-          <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
+          <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar" role="list" aria-label="Filtered identities registry">
             {filteredUsers.map((u) => (
-              <div key={u.uid} className="glass-card p-6 space-y-4 hover:border-brand-accent/50 transition-colors cursor-pointer group" onClick={() => setSelectedUser(u)}>
+              <div 
+                key={u.uid} 
+                className="glass-card p-6 space-y-4 hover:border-brand-accent/50 transition-colors cursor-pointer group" 
+                onClick={() => setSelectedUser(u)} 
+                role="listitem"
+                tabIndex={0}
+                onKeyDown={(e) => e.key === 'Enter' && setSelectedUser(u)}
+                aria-label={`Adjudicate identity for ${u.name}`}
+              >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 border border-brand-border rounded-full flex items-center justify-center text-brand-accent font-display text-sm group-hover:border-brand-accent transition-colors">
+                    <div className="w-10 h-10 border border-brand-border rounded-full flex items-center justify-center text-brand-accent font-display text-sm group-hover:border-brand-accent transition-colors" aria-hidden="true">
                       {u.name[0]}
                     </div>
                     <div>
@@ -340,24 +350,27 @@ const Admin: React.FC = () => {
           </div>
         </section>
 
-        {/* User Detail Modal */}
         {selectedUser && (
-          <div className="fixed inset-0 bg-brand-bg/80 backdrop-blur-sm z-[150] flex items-center justify-center p-6">
+          <div className="fixed inset-0 bg-brand-bg/80 backdrop-blur-sm z-[150] flex items-center justify-center p-6" role="presentation">
             <motion.div 
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               className="bg-brand-card w-full max-w-xl rounded-2xl border border-brand-border overflow-hidden shadow-3xl text-brand-text-bright"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="adjudication-modal-title"
             >
               <div className="p-8 border-b border-brand-border flex justify-between items-center bg-white/5">
                 <div className="space-y-1">
-                  <h3 className="font-display text-2xl tracking-tight">Identity Adjudication</h3>
+                  <h3 id="adjudication-modal-title" className="font-display text-2xl tracking-tight">Identity Adjudication</h3>
                   <p className="text-[10px] text-brand-text-dim uppercase tracking-widest">Protocol Ref: {selectedUser.uid.toUpperCase()}</p>
                 </div>
                 <button 
                   onClick={() => setSelectedUser(null)} 
                   className="text-brand-text-dim hover:text-brand-text-bright transition-colors"
+                  aria-label="Close dialog"
                 >
-                  <Plus className="rotate-45" size={24} />
+                  <Plus className="rotate-45" size={24} aria-hidden="true" />
                 </button>
               </div>
 
@@ -430,16 +443,19 @@ const Admin: React.FC = () => {
 
         {/* Department Deletion Confirmation Modal */}
         {deptToDelete && (
-          <div className="fixed inset-0 bg-brand-bg/80 backdrop-blur-sm z-[200] flex items-center justify-center p-6">
+          <div className="fixed inset-0 bg-brand-bg/80 backdrop-blur-sm z-[200] flex items-center justify-center p-6" role="presentation">
             <motion.div 
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               className="bg-brand-card w-full max-w-md rounded-2xl border border-brand-border overflow-hidden shadow-3xl text-brand-text-bright"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="decommission-modal-title"
             >
               <div className="p-8 border-b border-brand-border bg-red-500/10 flex items-center gap-4">
-                <Trash2 className="text-red-400" size={24} />
+                <Trash2 className="text-red-400" size={24} aria-hidden="true" />
                 <div className="space-y-1">
-                  <h3 className="font-display text-xl tracking-tight">Sector Decommissioning</h3>
+                  <h3 id="decommission-modal-title" className="font-display text-xl tracking-tight">Sector Decommissioning</h3>
                   <p className="text-[10px] text-red-300 font-bold uppercase tracking-widest">High-Impact Destructive Action</p>
                 </div>
               </div>

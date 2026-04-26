@@ -131,20 +131,20 @@ const Services: React.FC = () => {
         <div className="lg:col-span-2 space-y-8">
           <div className="flex items-center justify-between border-b border-brand-border pb-4">
             <h2 className="text-xs uppercase tracking-[0.3em] font-black text-brand-text-dim">Request Registry</h2>
-            <div className="text-[10px] text-brand-accent font-bold uppercase tracking-widest flex items-center gap-2">
+            <div className="text-[10px] text-brand-accent font-bold uppercase tracking-widest flex items-center gap-2" aria-live="polite">
               <div className="w-1.5 h-1.5 bg-brand-accent rounded-full"></div>
               Active Stream
             </div>
           </div>
 
-          <div className="grid gap-6">
+          <div className="grid gap-6" role="list">
             {loading ? (
-              <div className="flex justify-center py-20 bg-brand-card rounded-3xl border border-brand-border">
-                <Loader2 className="animate-spin text-brand-accent" size={32} />
+              <div className="flex justify-center py-20 bg-brand-card rounded-3xl border border-brand-border" aria-busy="true" aria-label="Loading your requests">
+                <Loader2 className="animate-spin text-brand-accent" size={32} aria-hidden="true" />
               </div>
             ) : requests.length > 0 ? (
               requests.map((req) => (
-                <div key={req.id} className="glass-card p-8 flex flex-col md:flex-row md:items-center justify-between gap-6 hover:border-brand-accent transition-colors">
+                <div key={req.id} className="glass-card p-8 flex flex-col md:flex-row md:items-center justify-between gap-6 hover:border-brand-accent transition-colors" role="listitem">
                   <div className="space-y-2">
                     <div className="flex items-center gap-3">
                       <span className={`px-2 py-0.5 border rounded text-[9px] font-black uppercase tracking-widest ${
@@ -159,7 +159,7 @@ const Services: React.FC = () => {
                     </div>
                     <h3 className="text-xl font-bold">{req.service_type}</h3>
                     <div className="flex items-center gap-1.5 text-[10px] text-brand-text-dim uppercase tracking-widest">
-                      <Clock size={12} />
+                      <Clock size={12} aria-hidden="true" />
                       Filing Date: {req.created_at?.seconds ? format(req.created_at.toDate(), 'MMMM d, yyyy') : 'Pending Verification'}
                     </div>
                   </div>
@@ -168,11 +168,11 @@ const Services: React.FC = () => {
                     <div className="text-right">
                       {req.status === 'completed' ? (
                         <div className="flex items-center gap-2 text-green-400 text-xs font-bold uppercase tracking-widest">
-                          <CheckCircle2 size={16} /> Finalized
+                          <CheckCircle2 size={16} aria-hidden="true" /> Finalized
                         </div>
                       ) : (
                         <div className="flex items-center gap-2 text-brand-text-dim text-xs font-bold uppercase tracking-widest">
-                          <Loader2 size={14} className="animate-spin" /> Adjudicating
+                          <Loader2 size={14} className="animate-spin" aria-hidden="true" /> Adjudicating
                         </div>
                       )}
                     </div>
@@ -180,7 +180,7 @@ const Services: React.FC = () => {
                 </div>
               ))
             ) : (
-              <div className="text-center py-20 border border-dashed border-brand-border rounded-3xl">
+              <div className="text-center py-20 border border-dashed border-brand-border rounded-3xl" aria-live="polite">
                 <p className="text-brand-text-dim text-sm uppercase tracking-widest font-bold">No institutional requests found.</p>
               </div>
             )}
@@ -218,37 +218,42 @@ const Services: React.FC = () => {
       </div>
 
       {showModal && (
-        <div className="fixed inset-0 bg-brand-bg/80 backdrop-blur-sm z-[100] flex items-center justify-center p-6">
+        <div className="fixed inset-0 bg-brand-bg/80 backdrop-blur-sm z-[100] flex items-center justify-center p-6" role="presentation">
           <motion.div 
             initial={{ scale: 0.95, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             className="bg-brand-card w-full max-w-xl rounded-2xl border border-brand-border overflow-hidden shadow-3xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="request-modal-title"
           >
             <div className="p-8 border-b border-brand-border flex justify-between items-center bg-white/5">
-              <h3 className="font-display text-2xl tracking-tight">Formal Request Filing</h3>
+              <h3 id="request-modal-title" className="font-display text-2xl tracking-tight">Formal Request Filing</h3>
               <button 
                 onClick={() => setShowModal(false)}
                 className="text-brand-text-dim hover:text-brand-text-bright transition-colors"
                 disabled={submitting}
+                aria-label="Close dialog"
               >
-                <X size={24} />
+                <X size={24} aria-hidden="true" />
               </button>
             </div>
             
             <form onSubmit={handleSubmit} className="p-10 space-y-8">
               <div className="space-y-4">
-                <label className="text-[10px] font-black uppercase tracking-widest text-brand-text-dim ml-1">Select Service Category</label>
-                <div className="grid gap-3">
+                <label id="service-catalog-label" className="text-[10px] font-black uppercase tracking-widest text-brand-text-dim ml-1">Select Service Category</label>
+                <div className="grid gap-3" role="group" aria-labelledby="service-catalog-label">
                   {serviceTypes.map(type => (
                     <button
                       key={type}
                       type="button"
                       onClick={() => setServiceType(type)}
-                      className={`text-left p-5 rounded-xl border transition-all ${
+                      className={`text-left p-5 rounded-xl border transition-all focus:ring-2 focus:ring-brand-accent outline-none ${
                         serviceType === type 
                           ? 'border-brand-accent bg-brand-accent/10' 
                           : 'border-brand-border bg-white/5 hover:border-brand-text-dim'
                       }`}
+                      aria-pressed={serviceType === type}
                     >
                       <div className="font-bold text-sm mb-1">{type}</div>
                       <div className="text-[9px] text-brand-text-dim uppercase tracking-widest">Official Government Module</div>
