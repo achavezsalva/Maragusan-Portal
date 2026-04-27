@@ -16,13 +16,28 @@
     },
     "Department": {
       "title": "Department",
-      "description": "Municipal departments",
+      "description": "Municipal departments detailed information",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
-        "department_name": { "type": "string" }
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "head": { "type": "string" },
+        "contact": {
+          "type": "object",
+          "properties": {
+            "email": { "type": "string" },
+            "phone": { "type": "string" },
+            "location": { "type": "string" }
+          }
+        },
+        "services": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "category": { "type": "string" }
       },
-      "required": ["id", "department_name"]
+      "required": ["id", "name", "description", "head", "contact", "services"]
     },
     "Announcement": {
       "title": "Announcement",

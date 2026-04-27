@@ -77,6 +77,15 @@ service cloud.firestore {
              data.created_at == request.time;
     }
 
+    function isValidDepartment(data) {
+      return data.keys().hasAll(['id', 'name', 'description', 'head', 'contact', 'services']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 200 &&
+             data.head is string && data.head.size() < 200 &&
+             data.description is string && data.description.size() < 2000 &&
+             data.contact is map &&
+             data.services is list && data.services.size() <= 20;
+    }
+
     match /users/{userId} {
       allow get: if isSignedIn() && (userId == request.auth.uid || (request.auth.token.email != null && userId == 'pre_auth:' + request.auth.token.email.lower()));
       allow list: if isAdmin();
@@ -96,7 +105,9 @@ service cloud.firestore {
 
     match /departments/{departmentId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow create: if isAdmin() && isValidDepartment(incoming());
+      allow update: if isAdmin() && isValidDepartment(incoming());
+      allow delete: if isAdmin();
     }
 
     match /announcements/{announcementId} {

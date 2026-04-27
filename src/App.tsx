@@ -16,6 +16,7 @@ import Barangays from './pages/Barangays';
 import About from './pages/About';
 import Officials from './pages/Officials';
 import Admin from './pages/Admin';
+import DepartmentDetail from './pages/DepartmentDetail';
 import LoginModal from './components/LoginModal';
 
 interface NavItemProps {
@@ -411,6 +412,7 @@ export default function App() {
             <Route path="/announcements" element={<Announcements />} />
             <Route path="/services" element={<Services />} />
             <Route path="/feedback" element={<Feedback />} />
+            <Route path="/directory/:deptId" element={<DepartmentDetail />} />
             <Route path="/admin" element={<Admin />} />
             <Route path="/staff" element={<Announcements />} />
           </Routes>

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Building,
   Landmark,
@@ -12,10 +12,26 @@ import {
   GraduationCap
 } from 'lucide-react';
 import { motion } from 'motion/react';
-
-import { DEPARTMENT_CATEGORIES } from '../constants/departments';
+import { Link } from 'react-router-dom';
+import { collection, onSnapshot, query } from 'firebase/firestore';
+import { db } from '../lib/firebase';
+import { DEPARTMENT_CATEGORIES, DepartmentInfo } from '../constants/departments';
 
 const Directory: React.FC = () => {
+  const [dynamicDepts, setDynamicDepts] = useState<DepartmentInfo[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const q = query(collection(db, 'departments'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const depts = snapshot.docs.map(doc => doc.data() as DepartmentInfo);
+      setDynamicDepts(depts);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
   const categories = DEPARTMENT_CATEGORIES.map(cat => {
     let icon = Landmark;
     if (cat.title === "Executive Offices") icon = Landmark;
@@ -28,7 +44,12 @@ const Directory: React.FC = () => {
     else if (cat.title === "Business & Employment") icon = TrendingUp;
     else if (cat.title === "Culture, Education & Information") icon = GraduationCap;
     
-    return { ...cat, icon };
+    // Mix dynamic data with category structure
+    const deptsInCategory = dynamicDepts.length > 0 
+      ? dynamicDepts.filter(d => cat.depts.some(staticD => staticD.id === d.id))
+      : cat.depts; // Fallback to static if firestore empty (during init)
+
+    return { ...cat, icon, deptsList: deptsInCategory };
   });
 
   return (
@@ -43,37 +64,48 @@ const Directory: React.FC = () => {
         </div>
       </div>
 
-      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8" role="list" aria-label="Department categories">
-        {categories.map((category, idx) => (
-          <motion.div 
-            key={idx}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            whileHover={{ y: -8, scale: 1.01 }}
-            transition={{ 
-              delay: idx * 0.05,
-              type: "spring",
-              stiffness: 300,
-              damping: 20
-            }}
-            className="glass-card p-8 group hover:border-brand-secondary hover:border-2 hover:bg-brand-secondary/10 hover:shadow-[0_0_30px_rgba(234,179,8,0.3)] transition-all duration-300"
-            role="listitem"
-          >
-            <div className="flex items-center gap-3 mb-6">
-               <category.icon className="text-brand-accent transition-all" size={24} strokeWidth={1.5} aria-hidden="true" />
-               <h3 className="text-xs font-black uppercase tracking-[0.2em] text-brand-text-bright">{category.title}</h3>
-            </div>
-            <ul className="space-y-3" aria-label={`${category.title} departments`}>
-              {category.depts.map((dept, dIdx) => (
-                <li key={dIdx} className="flex items-start gap-3 text-sm text-brand-text-dim hover:text-brand-accent transition-colors font-medium leading-tight cursor-default">
-                  <div className="mt-1.5 w-1 h-1 bg-brand-border rounded-full group-hover:bg-brand-accent transition-colors"></div>
-                  {dept}
-                </li>
-              ))}
-            </ul>
-          </motion.div>
-        ))}
-      </div>
+      {loading && dynamicDepts.length === 0 ? (
+        <div className="py-20 text-center uppercase tracking-widest text-xs font-black text-brand-text-dim/50 italic animate-pulse">
+          Synchronizing sector metadata...
+        </div>
+      ) : (
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8" role="list" aria-label="Department categories">
+          {categories.map((category, idx) => (
+            <motion.div 
+              key={idx}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              whileHover={{ y: -8, scale: 1.01 }}
+              transition={{ 
+                delay: idx * 0.05,
+                type: "spring",
+                stiffness: 300,
+                damping: 20
+              }}
+              className="glass-card p-8 group hover:border-brand-secondary hover:border-2 hover:bg-brand-secondary/10 hover:shadow-[0_0_30px_rgba(234,179,8,0.3)] transition-all duration-300"
+              role="listitem"
+            >
+              <div className="flex items-center gap-3 mb-6">
+                 <category.icon className="text-brand-accent transition-all" size={24} strokeWidth={1.5} aria-hidden="true" />
+                 <h3 className="text-xs font-black uppercase tracking-[0.2em] text-brand-text-bright">{category.title}</h3>
+              </div>
+              <ul className="space-y-3" aria-label={`${category.title} departments`}>
+                {category.deptsList.map((dept, dIdx) => (
+                  <li key={dIdx}>
+                    <Link 
+                      to={`/directory/${dept.id}`}
+                      className="group/item flex items-start gap-3 text-sm text-brand-text-dim hover:text-brand-accent transition-all font-medium leading-tight p-2 -ml-2 rounded-lg hover:bg-brand-secondary/10"
+                    >
+                      <div className="mt-1.5 w-1 h-1 bg-brand-border rounded-full group-hover/item:bg-brand-accent transition-colors shrink-0"></div>
+                      <span className="group-hover/item:translate-x-1 transition-transform">{dept.name}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </motion.div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };
