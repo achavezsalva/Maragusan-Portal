@@ -11,11 +11,11 @@ import LandingPage from './pages/LandingPage';
 import Announcements from './pages/Announcements';
 import Services from './pages/Services';
 import Feedback from './pages/Feedback';
-import Admin from './pages/Admin';
 import Directory from './pages/Directory';
 import Barangays from './pages/Barangays';
 import About from './pages/About';
 import Officials from './pages/Officials';
+import Admin from './pages/Admin';
 import LoginModal from './components/LoginModal';
 
 interface NavItemProps {
@@ -38,7 +38,7 @@ const NavItem: React.FC<NavItemProps> = ({ label, to, dropdown }) => {
         onKeyDown={(e) => e.key === 'Escape' && setIsOpen(false)}
       >
         <button 
-          className={`nav-link flex items-center gap-1.5 py-4 ${isActive ? 'active' : ''}`}
+          className={`nav-link flex items-center gap-1.5 py-2 px-3 rounded-lg transition-all duration-300 hover:bg-brand-secondary/10 ${isActive ? 'bg-brand-secondary/10 active' : ''}`}
           aria-haspopup="true"
           aria-expanded={isOpen}
           aria-label={`${label} menu`}
@@ -60,7 +60,7 @@ const NavItem: React.FC<NavItemProps> = ({ label, to, dropdown }) => {
                 <Link
                   key={idx}
                   to={item.to}
-                  className="block px-6 py-3 text-[11px] font-black uppercase tracking-widest text-brand-text-dim hover:text-brand-accent hover:bg-white/5 transition-all focus:bg-white/5 focus:outline-none focus:text-brand-accent"
+                  className="block mx-2 px-4 py-2.5 rounded-lg text-[11px] font-black uppercase tracking-widest text-brand-text-dim hover:text-brand-text-bright hover:bg-brand-secondary/20 transition-all duration-200 focus:bg-brand-secondary/30 focus:outline-none focus:text-brand-text-bright"
                   role="menuitem"
                   onClick={() => setIsOpen(false)}
                 >
@@ -76,7 +76,7 @@ const NavItem: React.FC<NavItemProps> = ({ label, to, dropdown }) => {
 
   return (
     <div className="h-full flex items-center">
-      <Link to={to || '#'} className={`nav-link py-4 ${isActive ? 'active' : ''}`}>
+      <Link to={to || '#'} className={`nav-link py-2 px-3 rounded-lg transition-all duration-300 hover:bg-brand-secondary/10 ${isActive ? 'bg-brand-secondary/10 active' : ''}`}>
         {label}
       </Link>
     </div>
@@ -153,14 +153,10 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
         Skip to main content
       </a>
 
-      <nav 
-        className="h-20 bg-brand-bg border-b border-brand-border sticky top-0 z-50 px-10 flex items-center justify-between"
-        role="navigation"
-        aria-label="Main Navigation"
-      >
-        <div className="flex items-center gap-6">
-          <Link to="/" className="flex items-center gap-4 group shrink-0" aria-label={`Home - ${MUNICIPAL_BRANDING.name}`}>
-            <figure className="w-14 h-14 rounded-full flex items-center justify-center border border-brand-border group-hover:border-brand-accent transition-all overflow-hidden bg-white shadow-sm font-sans">
+      <header className="py-8 bg-brand-bg border-b border-brand-border/30">
+        <div className="max-w-7xl mx-auto px-10 flex items-center justify-between">
+          <Link to="/" className="flex items-center gap-6 group shrink-0" aria-label={`Home - ${MUNICIPAL_BRANDING.name}`}>
+            <figure className="w-20 h-20 rounded-full flex items-center justify-center border border-brand-border group-hover:border-brand-accent transition-all overflow-hidden bg-white shadow-md font-sans">
                <img 
                  src={MUNICIPAL_BRANDING.logo.seal} 
                  alt={MUNICIPAL_BRANDING.logo.alt} 
@@ -169,12 +165,29 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
                />
             </figure>
             <div className="flex flex-col">
-              <span className="font-display text-xl tracking-tight leading-none text-brand-accent">{MUNICIPAL_BRANDING.name}</span>
-              <span className="text-[9px] text-brand-text-dim uppercase tracking-[0.2em] font-black italic mt-1 group-hover:text-brand-accent transition-colors">{MUNICIPAL_BRANDING.portalName}</span>
+              <span className="font-display text-4xl tracking-tighter leading-none text-brand-text-bright group-hover:text-brand-accent transition-colors">
+                {MUNICIPAL_BRANDING.name}
+              </span>
+              <div className="flex items-center gap-3 mt-2">
+                <div className="h-px w-8 bg-brand-accent/50" />
+                <span className="text-[11px] text-brand-text-dim uppercase tracking-[0.4em] font-black italic group-hover:text-brand-accent/80 transition-colors">
+                  {MUNICIPAL_BRANDING.portalName}
+                </span>
+              </div>
             </div>
           </Link>
+          <div className="hidden md:flex flex-col items-end text-right">
+             <span className="text-[10px] font-black uppercase tracking-[0.3em] text-brand-text-dim mb-1">Official Digital Portal of</span>
+             <span className="text-xs font-bold text-brand-text-bright uppercase tracking-widest">{MUNICIPAL_BRANDING.fullName}</span>
+          </div>
         </div>
+      </header>
 
+      <nav 
+        className="h-16 bg-brand-bg border-b border-brand-border sticky top-0 z-50 px-10 flex items-center justify-center relative"
+        role="navigation"
+        aria-label="Main Navigation"
+      >
         {/* Desktop Menu */}
         <div className="hidden lg:flex items-center h-full gap-4 xl:gap-6">
           {menuItems.map((item, idx) => (
@@ -186,13 +199,13 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
             />
           ))}
           {isAdmin && (
-            <Link to="/admin" className={`nav-link flex items-center gap-2 ${location.pathname === '/admin' ? 'active' : ''}`}>
+            <Link to="/admin" className={`nav-link flex items-center gap-2 py-2 px-3 rounded-lg transition-all duration-300 bg-brand-accent/10 border border-brand-accent/20 text-brand-accent hover:bg-brand-accent/20 ${location.pathname === '/admin' ? 'active' : ''}`}>
               <Shield size={14} /> Admin
             </Link>
           )}
         </div>
 
-        <div className="flex items-center gap-6">
+        <div className="absolute right-10 flex items-center gap-6">
           <ul className="flex items-center gap-2 lg:gap-4" role="list">
             <li className="hidden sm:block">
               <button 
@@ -259,20 +272,41 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
             {menuItems.map((item, idx) => (
               <div key={idx} className="space-y-2">
                 {item.to ? (
-                  <Link to={item.to} onClick={() => setIsMenuOpen(false)} className="nav-link text-lg block">{item.label}</Link>
+                  <Link 
+                    to={item.to} 
+                    onClick={() => setIsMenuOpen(false)} 
+                    className="nav-link text-lg block py-2 px-4 rounded-lg hover:bg-brand-secondary/10 transition-all"
+                  >
+                    {item.label}
+                  </Link>
                 ) : (
                   <>
-                    <div className="text-[10px] font-black uppercase tracking-[0.2em] text-brand-accent mt-4 first:mt-0">{item.label}</div>
-                    <div className="grid grid-cols-1 gap-2 pl-4">
+                    <div className="text-[10px] font-black uppercase tracking-[0.2em] text-brand-accent mt-4 first:mt-0 px-4">{item.label}</div>
+                    <div className="grid grid-cols-1 gap-1 pl-4">
                       {item.dropdown?.map((sub, sIdx) => (
-                        <Link key={sIdx} to={sub.to} onClick={() => setIsMenuOpen(false)} className="nav-link text-sm">{sub.label}</Link>
+                        <Link 
+                          key={sIdx} 
+                          to={sub.to} 
+                          onClick={() => setIsMenuOpen(false)} 
+                          className="nav-link text-sm py-2 px-4 rounded-lg hover:bg-brand-secondary/10 transition-all text-brand-text-dim hover:text-brand-text-bright"
+                        >
+                          {sub.label}
+                        </Link>
                       ))}
                     </div>
                   </>
                 )}
               </div>
             ))}
-            {isAdmin && <Link to="/admin" onClick={() => setIsMenuOpen(false)} className="nav-link text-lg text-brand-accent pt-4 border-t border-brand-border">Admin Console</Link>}
+            {isAdmin && (
+              <Link 
+                to="/admin" 
+                onClick={() => setIsMenuOpen(false)} 
+                className="flex items-center gap-3 nav-link text-lg block py-3 px-4 rounded-lg bg-brand-accent/10 border border-brand-accent/20 text-brand-accent mt-4"
+              >
+                <Shield size={18} /> Admin Console
+              </Link>
+            )}
             {!user && (
               <button 
                 onClick={() => {

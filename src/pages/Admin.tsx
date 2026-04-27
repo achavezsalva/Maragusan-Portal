@@ -1,505 +1,568 @@
-import React, { useEffect, useState } from 'react';
-import { 
-  collection, 
-  onSnapshot, 
-  addDoc, 
-  deleteDoc, 
-  doc, 
-  updateDoc,  
-  query,
-  limit,
-  where
-} from 'firebase/firestore';
-import { db } from '../lib/firebase';
-import { useAuth } from '../hooks/useAuth';
+import React, { useState, useEffect } from 'react';
 import { 
   Users, 
-  Building2, 
-  Plus, 
-  Trash2, 
+  Search, 
+  Filter, 
+  MoreVertical, 
   Shield, 
-  Settings,
-  Activity,
-  UserPlus
+  UserPlus, 
+  Building2,
+  Mail,
+  Calendar,
+  X,
+  ChevronDown,
+  Check
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-
-interface Department {
-  id: string;
-  department_name: string;
-}
-
-interface UserProfile {
-  uid: string;
-  name: string;
-  email: string;
-  role: 'admin' | 'staff' | 'citizen';
-  department_id?: string;
-}
+import { collection, onSnapshot, query, updateDoc, doc, orderBy, setDoc, serverTimestamp } from 'firebase/firestore';
+import { db } from '../lib/firebase';
+import { useAuth, UserProfile } from '../hooks/useAuth';
+import { ALL_DEPARTMENTS } from '../constants/departments';
 
 const Admin: React.FC = () => {
-  const { isAdmin, profile } = useAuth();
-  const [departments, setDepartments] = useState<Department[]>([]);
+  const { profile, isAdmin } = useAuth();
   const [users, setUsers] = useState<UserProfile[]>([]);
-  const [filterRole, setFilterRole] = useState<'all' | 'admin' | 'staff' | 'citizen'>('all');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [roleFilter, setRoleFilter] = useState<string>('all');
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
-  const [pendingRequestsCount, setPendingRequestsCount] = useState(0);
-  const [unresolvedFeedbackCount, setUnresolvedFeedbackCount] = useState(0);
-  const [newDeptName, setNewDeptName] = useState('');
-  const [deptToDelete, setDeptToDelete] = useState<Department | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [errorMessage, setErrorMessage] = useState('');
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [deptSearch, setDeptSearch] = useState('');
+  const [isDeptDropdownOpen, setIsDeptDropdownOpen] = useState(false);
+
+  // Form State for editing
+  const [editRole, setEditRole] = useState<UserProfile['role']>('citizen');
+  const [editDept, setEditDept] = useState('');
+
+  // Form State for adding
+  const [newName, setNewName] = useState('');
+  const [newEmail, setNewEmail] = useState('');
+  const [newRole, setNewRole] = useState<UserProfile['role']>('staff');
+  const [newDept, setNewDept] = useState('');
 
   useEffect(() => {
     if (!isAdmin) return;
 
-    // Fetch Departments
-    const deptUnsub = onSnapshot(collection(db, 'departments'), (snapshot) => {
-      setDepartments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Department)));
+    const q = query(collection(db, 'users'), orderBy('created_at', 'desc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const usersList = snapshot.docs.map(doc => ({
+        ...doc.data(),
+        uid: doc.id
+      })) as UserProfile[];
+      setUsers(usersList);
     });
 
-    // Fetch Users (Full Registry)
-    const userUnsub = onSnapshot(query(collection(db, 'users')), (snapshot) => {
-      setUsers(snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() } as UserProfile)));
-      setLoading(false);
-    });
-
-    // Fetch Pending Service Requests Count
-    const requestsUnsub = onSnapshot(
-      query(collection(db, 'service_requests'), where('status', '==', 'pending')),
-      (snapshot) => {
-        setPendingRequestsCount(snapshot.size);
-      }
-    );
-
-    // Fetch Unresolved Feedback Count
-    // Assuming anything not 'resolved' is unresolved
-    const feedbackUnsub = onSnapshot(
-      query(collection(db, 'feedback'), where('status', '!=', 'resolved')),
-      (snapshot) => {
-        setUnresolvedFeedbackCount(snapshot.size);
-      }
-    );
-
-    return () => {
-      deptUnsub();
-      userUnsub();
-      requestsUnsub();
-      feedbackUnsub();
-    };
+    return () => unsubscribe();
   }, [isAdmin]);
 
-  const handleAddDept = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorMessage('');
-    
-    const trimmedName = newDeptName.trim();
-    if (trimmedName.length < 3) {
-      setErrorMessage('Sector designation must be at least 3 characters.');
-      return;
-    }
-
-    const exists = departments.some(d => d.department_name.toLowerCase() === trimmedName.toLowerCase());
-    if (exists) {
-      setErrorMessage('This sector designation is already registered.');
-      return;
-    }
-
-    try {
-      await addDoc(collection(db, 'departments'), { department_name: trimmedName });
-      setNewDeptName('');
-    } catch (err) {
-      setErrorMessage('System failure during sector registration.');
-    }
-  };
-
-  const handleConfirmDelete = async () => {
-    if (!deptToDelete) return;
-    try {
-      await deleteDoc(doc(db, 'departments', deptToDelete.id));
-      setDeptToDelete(null);
-    } catch (err) {
-      setErrorMessage('System failure during sector decommissioning.');
-    }
-  };
-
-  const handleUpdateRole = async (uid: string, role: string, deptId?: string | null) => {
-    // If setting to staff, keep current deptId unless a new one is provided.
-    // If setting to non-staff, clear deptId.
-    const finalDeptId = role === 'staff' ? (deptId !== undefined ? deptId : selectedUser?.department_id || null) : null;
-    
-    try {
-      await updateDoc(doc(db, 'users', uid), { 
-        role,
-        department_id: finalDeptId 
-      });
-      if (selectedUser?.uid === uid) {
-        setSelectedUser(prev => prev ? { ...prev, role: role as any, department_id: finalDeptId || undefined } : null);
-      }
-    } catch (err) {
-      console.error('Role update failed:', err);
-    }
-  };
-
-  const filteredUsers = users.filter(u => {
-    const matchesRole = filterRole === 'all' || u.role === filterRole;
-    const matchesSearch = u.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                         u.email.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesRole && matchesSearch;
+  const filteredUsers = users.filter(user => {
+    const matchesSearch = 
+      user.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+      user.email.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesRole = roleFilter === 'all' || user.role === roleFilter;
+    return matchesSearch && matchesRole;
   });
 
-  if (!isAdmin) return (
-    <div className="text-center py-20 px-4">
-      <div className="w-20 h-20 bg-red-50 text-red-600 rounded-full flex items-center justify-center mx-auto mb-6">
-        <Shield size={40} />
-      </div>
-      <h2 className="text-3xl font-bold text-slate-900 mb-2 font-display">Unprivileged Access</h2>
-      <p className="text-slate-500 max-w-md mx-auto">This area is reserved for Municipal Administrators. Your access attempt has been logged for security audit.</p>
-    </div>
+  const filteredDepts = ALL_DEPARTMENTS.filter(d => 
+    d.toLowerCase().includes(deptSearch.toLowerCase())
   );
 
+  const handleEditClick = (user: UserProfile) => {
+    setSelectedUser(user);
+    setEditRole(user.role);
+    setEditDept(user.department_id || '');
+    setIsEditModalOpen(true);
+  };
+
+  const handleUpdateUser = async () => {
+    if (!selectedUser) return;
+    
+    try {
+      const userRef = doc(db, 'users', selectedUser.uid);
+      await updateDoc(userRef, {
+        role: editRole,
+        department_id: editRole === 'citizen' ? null : editDept
+      });
+      setIsEditModalOpen(false);
+      setSelectedUser(null);
+    } catch (error) {
+      console.error("Error updating user:", error);
+    }
+  };
+
+  const handleAddUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newName || !newEmail) return;
+
+    try {
+      // Create a document with a random ID
+      const newUserRef = doc(collection(db, 'users'));
+      await setDoc(newUserRef, {
+        name: newName,
+        email: newEmail,
+        role: newRole,
+        department_id: newRole === 'citizen' ? null : newDept,
+        created_at: serverTimestamp(),
+      });
+      
+      // Reset form
+      setNewName('');
+      setNewEmail('');
+      setNewRole('staff');
+      setNewDept('');
+      setIsAddModalOpen(false);
+    } catch (error) {
+      console.error("Error adding user:", error);
+      alert("Failed to add user. Check permissions.");
+    }
+  };
+
+  if (!isAdmin) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 space-y-6">
+        <Shield size={64} className="text-red-500/50" />
+        <h1 className="text-2xl font-display uppercase tracking-tight text-brand-text-bright text-center">
+          Restricted Access Area
+        </h1>
+        <p className="text-brand-text-dim max-w-md text-center uppercase tracking-widest text-xs font-black">
+          You do not have the clearance levels required to access the Administrative Protocols. 
+          Please return to the public sector.
+        </p>
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-12">
-      <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 border-b border-brand-border pb-8">
-        <div className="space-y-2">
-          <h1 className="text-4xl font-display uppercase tracking-tight flex items-center gap-4">
-            <Shield className="text-brand-accent" size={36} strokeWidth={1} aria-hidden="true" />
-            Command Center
-          </h1>
-          <p className="text-brand-text-dim text-[11px] uppercase tracking-[0.3em]">Municipal System Adjudication & Oversight</p>
-        </div>
-        
-        <div className="flex items-center gap-6 text-[10px] uppercase font-black tracking-widest text-brand-text-dim" role="status" aria-label="System status">
-           <div className="flex items-center gap-2">
-             <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></div>
-             System Nominal
-           </div>
-           <div className="flex items-center gap-2 border-l border-brand-border pl-6">
-             {profile?.name} (Root Admin)
-           </div>
-        </div>
-      </header>
-
-      {/* Stats Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
-        <div className="glass-card p-6 space-y-3 group">
-          <div className="text-[10px] uppercase tracking-widest text-brand-text-dim">Verified Citizens</div>
-          <div className="flex items-baseline justify-between font-display">
-            <div className="text-4xl">{users.filter(u => u.role === 'citizen').length}</div>
-            <div className="text-[9px] text-brand-accent font-bold uppercase">Registry</div>
+    <div className="space-y-12 py-10">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+        <div className="flex items-center gap-6">
+          <div className="w-16 h-16 bg-brand-accent rounded-2xl flex items-center justify-center text-white shadow-xl shadow-brand-accent/20">
+            <Users size={32} />
+          </div>
+          <div>
+            <h1 className="text-4xl font-display uppercase tracking-tight text-brand-text-bright leading-none">Administration</h1>
+            <p className="text-[10px] text-brand-text-dim uppercase tracking-[0.3em] font-black italic mt-2">Personnel & Sector Management Ledger</p>
           </div>
         </div>
+        <button 
+          onClick={() => setIsAddModalOpen(true)}
+          className="flex items-center gap-3 bg-brand-accent text-white px-8 py-4 rounded-2xl text-[11px] font-black uppercase tracking-widest shadow-xl shadow-brand-accent/20 hover:bg-brand-accent/90 hover:scale-[1.02] transition-all"
+        >
+          <UserPlus size={18} /> New Authorization
+        </button>
+      </div>
 
-        <div className="glass-card p-6 space-y-3 group">
-          <div className="text-[10px] uppercase tracking-widest text-brand-text-dim">Municipal Sectors</div>
-          <div className="flex items-baseline justify-between font-display">
-            <div className="text-4xl">{departments.length}</div>
-            <div className="text-[9px] text-brand-accent font-bold uppercase">Departments</div>
+      {/* Stats Quick View */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="glass-card p-6 border-l-4 border-l-brand-accent">
+          <div className="text-[10px] font-black uppercase tracking-widest text-brand-text-dim mb-1">Total Personnel</div>
+          <div className="text-3xl font-display text-brand-text-bright">{users.length}</div>
+        </div>
+        <div className="glass-card p-6 border-l-4 border-l-brand-secondary">
+          <div className="text-[10px] font-black uppercase tracking-widest text-brand-text-dim mb-1">Municipal Staff</div>
+          <div className="text-3xl font-display text-brand-text-bright">
+            {users.filter(u => u.role === 'staff' || u.role === 'admin').length}
           </div>
         </div>
-
-        <div className="glass-card p-6 space-y-3 group border-brand-accent/20">
-          <div className="text-[10px] uppercase tracking-widest text-brand-accent">Pending Actions</div>
-          <div className="flex items-baseline justify-between font-display text-brand-accent">
-            <div className="text-4xl">{pendingRequestsCount}</div>
-            <div className="text-[9px] font-black uppercase tracking-widest">Requests</div>
-          </div>
-        </div>
-
-        <div className="glass-card p-6 space-y-3 group border-brand-accent/20">
-          <div className="text-[10px] uppercase tracking-widest text-brand-accent">Civic Attention</div>
-          <div className="flex items-baseline justify-between font-display text-brand-accent">
-            <div className="text-4xl">{unresolvedFeedbackCount}</div>
-            <div className="text-[9px] font-black uppercase tracking-widest">Feedback</div>
-          </div>
-        </div>
-
-        <div className="glass-card p-6 space-y-3 group">
-          <div className="text-[10px] uppercase tracking-widest text-brand-text-dim">Active Staff</div>
-          <div className="flex items-baseline justify-between font-display">
-            <div className="text-4xl">{users.filter(u => u.role === 'staff' || u.role === 'admin').length}</div>
-            <div className="text-[9px] text-brand-accent font-bold uppercase tracking-widest">Units</div>
+        <div className="glass-card p-6 border-l-4 border-l-brand-text-dim">
+          <div className="text-[10px] font-black uppercase tracking-widest text-brand-text-dim mb-1">Public Citizens</div>
+          <div className="text-3xl font-display text-brand-text-bright">
+            {users.filter(u => u.role === 'citizen').length}
           </div>
         </div>
       </div>
 
-      <div className="grid lg:grid-cols-2 gap-12">
-        {/* Manage Departments */}
-        <section className="space-y-6">
-          <div className="flex flex-col gap-4 pb-4 border-b border-brand-border">
-             <h2 className="text-xs uppercase tracking-[0.3em] font-black italic">Sector Directory</h2>
-             <form onSubmit={handleAddDept} className="space-y-3">
-               <div className="flex gap-4">
-                 <input 
-                   type="text" 
-                   value={newDeptName}
-                   onChange={e => {
-                     setNewDeptName(e.target.value);
-                     if (errorMessage) setErrorMessage('');
-                   }}
-                   placeholder="New Sector Name"
-                   className="flex-1 bg-brand-bg border border-brand-border rounded-lg px-4 py-2 text-[10px] font-bold uppercase tracking-widest appearance-none outline-hidden focus:border-brand-accent transition-all"
-                   aria-label="New sector name"
-                 />
-                 <button className="text-brand-accent hover:opacity-80 transition-opacity" aria-label="Register new sector">
-                   <Plus size={20} aria-hidden="true" />
-                 </button>
-               </div>
-               {errorMessage && (
-                 <motion.p 
-                   initial={{ opacity: 0, x: -10 }}
-                   animate={{ opacity: 1, x: 0 }}
-                   className="text-[9px] text-red-400 uppercase font-black tracking-widest italic"
-                 >
-                   Error: {errorMessage}
-                 </motion.p>
-               )}
-             </form>
-          </div>
-
-          <div className="grid gap-4 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar" role="list" aria-label="Department list">
-            {departments.map((dept) => (
-              <div key={dept.id} className="glass-card p-6 flex items-center justify-between group hover:border-brand-accent transition-colors" role="listitem">
-                <div className="space-y-1">
-                  <div className="font-bold text-lg text-brand-text-bright">{dept.department_name}</div>
-                  <div className="text-[10px] text-brand-text-dim uppercase tracking-widest">Registry ID: {dept.id.slice(0, 8).toUpperCase()}</div>
-                </div>
-                <button 
-                  onClick={() => setDeptToDelete(dept)}
-                  className="text-brand-text-dim hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all font-bold text-[10px] flex items-center gap-2"
-                  aria-label={`Decommission sector ${dept.department_name}`}
-                >
-                  <Trash2 size={16} aria-hidden="true" />
-                </button>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* Manage Users */}
-        <section className="space-y-6">
-          <div className="flex flex-col gap-6 pb-4 border-b border-brand-border">
-             <div className="flex items-center justify-between">
-                <h2 className="text-xs uppercase tracking-[0.3em] font-black italic">Identity Registry Oversight</h2>
-                <div className="text-[9px] font-black uppercase tracking-widest text-brand-text-dim bg-brand-border px-2 py-0.5 rounded">
-                  {filteredUsers.length} Units Active
-                </div>
-             </div>
-
-             <div className="flex flex-col md:flex-row gap-4">
-                <div className="flex-1 relative">
-                  <input 
-                    type="text"
-                    placeholder="Search by name or email..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full bg-brand-bg border border-brand-border rounded-lg pl-4 pr-10 py-2 text-[10px] font-bold uppercase tracking-widest outline-hidden focus:border-brand-accent transition-all"
-                  />
-                </div>
-                <div className="flex gap-2">
-                  {(['all', 'admin', 'staff', 'citizen'] as const).map(role => (
-                    <button
-                      key={role}
-                      onClick={() => setFilterRole(role)}
-                      className={`px-3 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest border transition-all ${
-                        filterRole === role 
-                          ? 'border-brand-accent bg-brand-accent/10 text-brand-accent' 
-                          : 'border-brand-border text-brand-text-dim hover:border-brand-text-bright'
-                      }`}
-                    >
-                      {role === 'all' ? 'Universal' : role}
-                    </button>
-                  ))}
-                </div>
-             </div>
-          </div>
-          
-          <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar" role="list" aria-label="Filtered identities registry">
-            {filteredUsers.map((u) => (
-              <div 
-                key={u.uid} 
-                className="glass-card p-6 space-y-4 hover:border-brand-accent/50 transition-colors cursor-pointer group" 
-                onClick={() => setSelectedUser(u)} 
-                role="listitem"
-                tabIndex={0}
-                onKeyDown={(e) => e.key === 'Enter' && setSelectedUser(u)}
-                aria-label={`Adjudicate identity for ${u.name}`}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 border border-brand-border rounded-full flex items-center justify-center text-brand-accent font-display text-sm group-hover:border-brand-accent transition-colors" aria-hidden="true">
-                      {u.name[0]}
-                    </div>
-                    <div>
-                      <div className="font-bold text-sm tracking-tight text-brand-text-bright">{u.name}</div>
-                      <div className="text-[10px] text-brand-text-dim uppercase tracking-widest">{u.email}</div>
-                    </div>
-                  </div>
-                  <div className="flex flex-col items-end gap-2">
-                    <div className={`px-2 py-0.5 border rounded text-[8px] font-black uppercase tracking-widest ${
-                      u.role === 'admin' ? 'border-red-400 text-red-400' : 
-                      u.role === 'staff' ? 'border-brand-accent text-brand-accent' : 'border-brand-text-dim text-brand-text-dim'
-                    }`}>
-                      {u.role}
-                    </div>
-                    <div className="text-[8px] text-brand-text-dim uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity">
-                      Click to Adjudicate
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))}
-            {filteredUsers.length === 0 && (
-              <div className="py-20 text-center border border-dashed border-brand-border rounded-2xl">
-                 <p className="text-brand-text-dim text-[10px] uppercase tracking-[0.2em] font-black">No identities match current criteria.</p>
-              </div>
-            )}
-          </div>
-        </section>
-
-        {selectedUser && (
-          <div className="fixed inset-0 bg-brand-bg/80 backdrop-blur-sm z-[150] flex items-center justify-center p-6" role="presentation">
-            <motion.div 
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              className="bg-brand-card w-full max-w-xl rounded-2xl border border-brand-border overflow-hidden shadow-3xl text-brand-text-bright"
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="adjudication-modal-title"
+      {/* Control Bar */}
+      <div className="flex flex-col lg:flex-row gap-4 items-center">
+        <div className="relative flex-1 w-full">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-brand-text-dim" size={18} />
+          <input 
+            type="text" 
+            placeholder="Identity scan: search by name or email..." 
+            className="w-full bg-white/5 border border-brand-border rounded-xl py-3 pl-12 pr-4 text-brand-text-bright focus:outline-none focus:border-brand-accent transition-colors placeholder:text-brand-text-dim/50 uppercase tracking-[0.05em] text-xs font-bold"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+        </div>
+        <div className="flex gap-2 w-full lg:w-auto">
+          <div className="relative flex-1 lg:w-48">
+            <Filter className="absolute left-4 top-1/2 -translate-y-1/2 text-brand-text-dim" size={14} />
+            <select 
+              className="w-full bg-white/5 border border-brand-border rounded-xl py-3 pl-10 pr-8 text-brand-text-bright appearance-none focus:outline-none focus:border-brand-accent transition-colors uppercase tracking-widest text-[10px] font-black cursor-pointer"
+              value={roleFilter}
+              onChange={(e) => setRoleFilter(e.target.value)}
             >
-              <div className="p-8 border-b border-brand-border flex justify-between items-center bg-white/5">
-                <div className="space-y-1">
-                  <h3 id="adjudication-modal-title" className="font-display text-2xl tracking-tight">Identity Adjudication</h3>
-                  <p className="text-[10px] text-brand-text-dim uppercase tracking-widest">Protocol Ref: {selectedUser.uid.toUpperCase()}</p>
+              <option value="all">All Clearance</option>
+              <option value="admin">Administrators</option>
+              <option value="staff">Sector Staff</option>
+              <option value="citizen">Public Citizens</option>
+            </select>
+            <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-brand-text-dim pointer-events-none" size={14} />
+          </div>
+        </div>
+      </div>
+
+      {/* User Ledger */}
+      <div className="glass-card overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left">
+            <thead>
+              <tr className="border-b border-brand-border bg-white/5">
+                <th className="px-6 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-brand-text-dim">Identity</th>
+                <th className="px-6 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-brand-text-dim">Clearance Level</th>
+                <th className="px-6 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-brand-text-dim">Sector Assignment</th>
+                <th className="px-6 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-brand-text-dim text-right">Protocol</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-brand-border/50">
+              {filteredUsers.map((user) => (
+                <tr key={user.uid} className="hover:bg-brand-accent/5 transition-colors group">
+                  <td className="px-6 py-5">
+                    <div className="flex items-center gap-4">
+                      <div className="w-10 h-10 rounded-lg bg-brand-bg border border-brand-border flex items-center justify-center text-brand-accent font-display text-lg">
+                        {user.name[0]}
+                      </div>
+                      <div>
+                        <div className="text-sm font-bold text-brand-text-bright tracking-tight">{user.name}</div>
+                        <div className="text-[10px] text-brand-text-dim font-black uppercase tracking-widest flex items-center gap-2">
+                          <Mail size={10} /> {user.email}
+                        </div>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-6 py-5">
+                    <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border ${
+                      user.role === 'admin' ? 'bg-brand-accent/10 text-brand-accent border-brand-accent/20' :
+                      user.role === 'staff' ? 'bg-brand-secondary/10 text-brand-secondary border-brand-secondary/20' :
+                      'bg-white/5 text-brand-text-dim border-brand-border'
+                    }`}>
+                      {user.role}
+                    </span>
+                  </td>
+                  <td className="px-6 py-5">
+                    <div className="flex items-center gap-2 text-xs font-medium text-brand-text-dim uppercase tracking-widest">
+                      <Building2 size={12} className={user.department_id ? 'text-brand-accent' : 'text-brand-text-dim/50'} />
+                      {user.department_id || 'N/A — Unassigned'}
+                    </div>
+                  </td>
+                  <td className="px-6 py-5 text-right">
+                    <button 
+                      onClick={() => handleEditClick(user)}
+                      className="p-2 text-brand-text-dim hover:text-brand-accent hover:bg-brand-accent/10 rounded-lg transition-all"
+                    >
+                      <MoreVertical size={18} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {filteredUsers.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="px-6 py-20 text-center uppercase tracking-[0.3em] font-black text-xs text-brand-text-dim/50">
+                    No matching personnel found in ledger.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Edit Modal */}
+      <AnimatePresence>
+        {isEditModalOpen && selectedUser && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsEditModalOpen(false)}
+              className="absolute inset-0 bg-brand-bg/80 backdrop-blur-md"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-xl bg-brand-bg border border-brand-border rounded-[2.5rem] shadow-2xl p-10 space-y-10 overflow-visible"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-6">
+                  <div className="w-14 h-14 bg-brand-accent/10 rounded-2xl flex items-center justify-center text-brand-accent border border-brand-accent/20">
+                    <Users size={24} />
+                  </div>
+                  <div>
+                    <h2 className="text-[10px] font-black uppercase tracking-[0.4em] text-brand-accent">Updating Permissions</h2>
+                    <p className="text-2xl font-display text-brand-text-bright leading-none mt-1">Identity Override</p>
+                  </div>
                 </div>
                 <button 
-                  onClick={() => setSelectedUser(null)} 
-                  className="text-brand-text-dim hover:text-brand-text-bright transition-colors"
-                  aria-label="Close dialog"
+                  onClick={() => setIsEditModalOpen(false)}
+                  className="p-3 bg-white/5 rounded-full hover:bg-white/10 transition-all"
                 >
-                  <Plus className="rotate-45" size={24} aria-hidden="true" />
+                  <X size={20} />
                 </button>
               </div>
 
-              <div className="p-10 space-y-10">
-                <div className="flex items-center gap-6">
-                  <div className="w-20 h-20 border-2 border-brand-accent rounded-full flex items-center justify-center text-brand-accent font-display text-3xl">
+              <div className="grid gap-8">
+                {/* User Info Header */}
+                <div className="bg-white/5 p-4 rounded-2xl flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-xl bg-brand-bg border border-brand-border flex items-center justify-center font-display text-xl text-brand-accent">
                     {selectedUser.name[0]}
                   </div>
-                  <div className="space-y-2">
-                    <h4 className="text-2xl font-bold tracking-tight">{selectedUser.name}</h4>
-                    <p className="text-brand-text-dim text-sm">{selectedUser.email}</p>
-                    <div className={`inline-block px-3 py-1 rounded text-[10px] font-black uppercase tracking-widest border mt-2 ${
-                      selectedUser.role === 'admin' ? 'border-red-400 text-red-400' : 
-                      selectedUser.role === 'staff' ? 'border-brand-accent text-brand-accent' : 'border-brand-text-dim text-brand-text-dim'
-                    }`}>
-                      Current Status: {selectedUser.role}
-                    </div>
+                  <div>
+                    <div className="text-sm font-bold text-brand-text-bright">{selectedUser.name}</div>
+                    <div className="text-[10px] text-brand-text-dim font-black uppercase tracking-widest">{selectedUser.email}</div>
                   </div>
                 </div>
 
-                <div className="space-y-8 pt-8 border-t border-brand-border">
-                  <div className="space-y-4">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-brand-text-dim">Reassign Identity Tier</label>
-                    <div className="grid grid-cols-3 gap-3">
-                      {(['citizen', 'staff', 'admin'] as const).map(r => (
+                {/* Role Switch */}
+                <div className="space-y-4">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-brand-text-dim px-2">Clearance Authorization</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {['citizen', 'staff', 'admin'].map((role) => (
+                      <button
+                        key={role}
+                        type="button"
+                        onClick={() => setEditRole(role as any)}
+                        className={`py-3 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all ${
+                          editRole === role 
+                            ? 'bg-brand-accent text-white border-brand-accent shadow-lg shadow-brand-accent/20' 
+                            : 'bg-white/5 text-brand-text-dim border-brand-border hover:border-brand-text-dim'
+                        }`}
+                      >
+                        {role}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Sector Assignment */}
+                {editRole !== 'citizen' && (
+                  <div className="space-y-4 relative">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-brand-text-dim px-2">Sector Assignment Protocol</label>
+                    <DepartmentDropdown 
+                      value={editDept}
+                      onChange={setEditDept}
+                      isOpen={isDeptDropdownOpen}
+                      setIsOpen={setIsDeptDropdownOpen}
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div className="flex gap-4 pt-4">
+                <button 
+                  type="button"
+                  onClick={() => setIsEditModalOpen(false)}
+                  className="flex-1 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest text-brand-text-dim border border-brand-border hover:bg-white/5 transition-all"
+                >
+                  Abort Protocol
+                </button>
+                <button 
+                  type="button"
+                  onClick={handleUpdateUser}
+                  className="flex-1 py-4 rounded-2xl bg-brand-accent text-white text-[10px] font-black uppercase tracking-widest shadow-xl shadow-brand-accent/20 hover:bg-brand-accent/90 transition-all font-display"
+                >
+                  Apply Authorization
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Add Modal */}
+      <AnimatePresence>
+        {isAddModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsAddModalOpen(false)}
+              className="absolute inset-0 bg-brand-bg/80 backdrop-blur-md"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-xl bg-brand-bg border border-brand-border rounded-[2.5rem] shadow-2xl p-10 space-y-8 overflow-visible"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-6">
+                  <div className="w-14 h-14 bg-brand-accent/10 rounded-2xl flex items-center justify-center text-brand-accent border border-brand-accent/20">
+                    <UserPlus size={24} />
+                  </div>
+                  <div>
+                    <h2 className="text-[10px] font-black uppercase tracking-[0.4em] text-brand-accent">Personnel Enrollment</h2>
+                    <p className="text-2xl font-display text-brand-text-bright leading-none mt-1">Add New Identity</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setIsAddModalOpen(false)}
+                  className="p-3 bg-white/5 rounded-full hover:bg-white/10 transition-all"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <form onSubmit={handleAddUser} className="space-y-6">
+                <div className="grid gap-6">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-brand-text-dim px-2">Personnel Name</label>
+                    <input 
+                      required
+                      type="text" 
+                      placeholder="e.g. Juan De La Cruz"
+                      className="w-full bg-white/5 border border-brand-border rounded-xl px-5 py-4 text-sm font-bold text-brand-text-bright focus:outline-none focus:border-brand-accent transition-colors placeholder:text-brand-text-dim/30"
+                      value={newName}
+                      onChange={(e) => setNewName(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-brand-text-dim px-2">Official Email Address</label>
+                    <input 
+                      required
+                      type="email" 
+                      placeholder="e.g. juan@municipality.gov.ph"
+                      className="w-full bg-white/5 border border-brand-border rounded-xl px-5 py-4 text-sm font-bold text-brand-text-bright focus:outline-none focus:border-brand-accent transition-colors placeholder:text-brand-text-dim/30"
+                      value={newEmail}
+                      onChange={(e) => setNewEmail(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-brand-text-dim px-2">Clearance Authorization</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {['citizen', 'staff', 'admin'].map((role) => (
                         <button
-                          key={r}
-                          onClick={() => handleUpdateRole(selectedUser.uid, r)}
-                          className={`text-center py-3 rounded-lg border transition-all text-[9px] font-black uppercase tracking-widest ${
-                            selectedUser.role === r 
-                              ? 'border-brand-accent bg-brand-accent/10 text-brand-accent' 
-                              : 'border-brand-border bg-white/5 hover:border-brand-text-dim'
+                          key={role}
+                          type="button"
+                          onClick={() => setNewRole(role as any)}
+                          className={`py-3 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all ${
+                            newRole === role 
+                              ? 'bg-brand-accent text-white border-brand-accent shadow-lg shadow-brand-accent/20' 
+                              : 'bg-white/5 text-brand-text-dim border-brand-border hover:border-brand-text-dim'
                           }`}
                         >
-                          {r}
+                          {role}
                         </button>
                       ))}
                     </div>
                   </div>
 
-                  <AnimatePresence>
-                    {selectedUser.role === 'staff' && (
-                      <motion.div 
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        className="overflow-hidden space-y-4"
-                      >
-                        <label className="text-[10px] font-black uppercase tracking-widest text-brand-text-dim">Sector Assignment</label>
-                        <div className="grid gap-2">
-                          <select 
-                            value={selectedUser.department_id || ''}
-                            onChange={(e) => handleUpdateRole(selectedUser.uid, 'staff', e.target.value)}
-                            className="w-full bg-brand-bg border border-brand-border rounded-lg text-[10px] font-bold uppercase tracking-widest p-4 appearance-none hover:border-brand-accent transition-all cursor-pointer"
-                          >
-                            <option value="">Unassigned Reserve</option>
-                            {departments.map(d => (
-                              <option key={d.id} value={d.id}>{d.department_name}</option>
-                            ))}
-                          </select>
-                          <p className="text-[9px] text-brand-text-dim mt-2 leading-relaxed uppercase tracking-wider">Note: Sector assignment is strictly professional to administrative tier identities.</p>
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
+                  {newRole !== 'citizen' && (
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-brand-text-dim px-2">Sector Assignment</label>
+                      <DepartmentDropdown 
+                        value={newDept}
+                        onChange={setNewDept}
+                        isOpen={isDeptDropdownOpen}
+                        setIsOpen={setIsDeptDropdownOpen}
+                      />
+                    </div>
+                  )}
                 </div>
 
-                <div className="bg-brand-accent/5 p-6 border border-brand-accent/20 rounded-xl space-y-2">
-                  <div className="flex items-center gap-2 text-brand-accent text-[10px] font-black uppercase tracking-widest">
-                    <Activity size={14} /> Audit Trace
-                  </div>
-                  <p className="text-[10px] text-brand-text-dim leading-relaxed uppercase tracking-wide">Any displacement of identity permissions is permanently recorded within the municipal system registry for administrative accountability.</p>
+                <div className="flex gap-4 pt-4">
+                  <button 
+                    type="button"
+                    onClick={() => setIsAddModalOpen(false)}
+                    className="flex-1 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest text-brand-text-dim border border-brand-border hover:bg-white/5 transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    type="submit"
+                    className="flex-1 py-4 rounded-2xl bg-brand-accent text-white text-[10px] font-black uppercase tracking-widest shadow-xl shadow-brand-accent/20 hover:bg-brand-accent/90 transition-all font-display"
+                  >
+                    Confirm Authorization
+                  </button>
                 </div>
-              </div>
+              </form>
             </motion.div>
           </div>
         )}
+      </AnimatePresence>
+    </div>
+  );
+};
 
-        {/* Department Deletion Confirmation Modal */}
-        {deptToDelete && (
-          <div className="fixed inset-0 bg-brand-bg/80 backdrop-blur-sm z-[200] flex items-center justify-center p-6" role="presentation">
-            <motion.div 
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              className="bg-brand-card w-full max-w-md rounded-2xl border border-brand-border overflow-hidden shadow-3xl text-brand-text-bright"
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="decommission-modal-title"
-            >
-              <div className="p-8 border-b border-brand-border bg-red-500/10 flex items-center gap-4">
-                <Trash2 className="text-red-400" size={24} aria-hidden="true" />
-                <div className="space-y-1">
-                  <h3 id="decommission-modal-title" className="font-display text-xl tracking-tight">Sector Decommissioning</h3>
-                  <p className="text-[10px] text-red-300 font-bold uppercase tracking-widest">High-Impact Destructive Action</p>
-                </div>
-              </div>
+// Sub-component for Department Dropdown to avoid repetitive logic
+const DepartmentDropdown: React.FC<{
+  value: string;
+  onChange: (val: string) => void;
+  isOpen: boolean;
+  setIsOpen: (open: boolean) => void;
+}> = ({ value, onChange, isOpen, setIsOpen }) => {
+  const [search, setSearch] = useState('');
+  const filteredDepts = ALL_DEPARTMENTS.filter(d => 
+    d.toLowerCase().includes(search.toLowerCase())
+  );
 
-              <div className="p-8 space-y-6">
-                <p className="text-xs text-brand-text-dim leading-relaxed uppercase tracking-wider">
-                  You are about to permanently decommission the <span className="text-brand-text-bright font-black">"{deptToDelete.department_name}"</span> sector from the municipal registry. This action is irreversible.
-                </p>
-                
-                <div className="flex flex-col gap-3">
-                  <button 
-                    onClick={handleConfirmDelete}
-                    className="w-full py-4 bg-red-600 text-white text-[10px] font-black uppercase tracking-[0.2em] rounded-lg hover:bg-red-700 transition-colors shadow-lg shadow-red-900/20"
-                  >
-                    Confirm Decommissioning
-                  </button>
-                  <button 
-                    onClick={() => setDeptToDelete(null)}
-                    className="w-full py-4 bg-brand-border text-brand-text-dim text-[10px] font-black uppercase tracking-[0.2em] rounded-lg hover:text-brand-text-bright transition-colors"
-                  >
-                    Abort Protocol
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        )}
+  return (
+    <div className="relative">
+      <div 
+        className="w-full bg-white/5 border border-brand-border rounded-xl px-5 py-4 cursor-pointer flex items-center justify-between group hover:border-brand-accent/50 transition-colors"
+        onClick={() => setIsOpen(!isOpen)}
+      >
+        <div className="flex items-center gap-3">
+          <Building2 size={16} className="text-brand-accent" />
+          <span className={`text-xs font-bold uppercase tracking-widest ${value ? 'text-brand-text-bright' : 'text-brand-text-dim/40'}`}>
+            {value || 'Select Sector...'}
+          </span>
+        </div>
+        <ChevronDown size={16} className={`text-brand-text-dim transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`} />
       </div>
+
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 10 }}
+            className="absolute z-[65] left-0 right-0 mt-2 bg-brand-bg border border-brand-border rounded-2xl shadow-2xl overflow-hidden max-h-64 flex flex-col"
+          >
+            <div className="p-3 border-b border-brand-border bg-white/5">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-text-dim" size={14} />
+                <input 
+                  type="text" 
+                  placeholder="Sector scan..."
+                  className="w-full bg-brand-bg border border-brand-border rounded-lg py-2 pl-9 pr-4 text-[10px] font-black uppercase tracking-widest outline-none focus:border-brand-accent transition-colors"
+                  value={search}
+                  autoFocus
+                  onChange={(e) => setSearch(e.target.value)}
+                  onClick={(e) => e.stopPropagation()}
+                />
+              </div>
+            </div>
+            <div className="overflow-y-auto custom-scrollbar flex-1">
+              {filteredDepts.map((d, idx) => (
+                <div 
+                  key={idx}
+                  className="px-4 py-3 flex items-center justify-between hover:bg-brand-accent/10 cursor-pointer transition-colors group"
+                  onClick={() => {
+                    onChange(d);
+                    setIsOpen(false);
+                  }}
+                >
+                  <span className="text-[10px] font-black uppercase tracking-widest text-brand-text-dim group-hover:text-brand-accent transition-colors">
+                    {d}
+                  </span>
+                  {value === d && <Check size={14} className="text-brand-accent" />}
+                </div>
+              ))}
+              {filteredDepts.length === 0 && (
+                <div className="p-8 text-center text-[9px] font-black uppercase tracking-widest text-brand-text-dim/50">
+                  No sectors found match scan.
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

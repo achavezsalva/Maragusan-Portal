@@ -46,6 +46,6 @@
   }
 
   .nav-link.active {
-    @apply text-brand-accent border-b-2 border-brand-accent pb-1;
+    @apply text-brand-accent bg-brand-secondary/20;
   }
 }

@@ -13,54 +13,23 @@ import {
 } from 'lucide-react';
 import { motion } from 'motion/react';
 
+import { DEPARTMENT_CATEGORIES } from '../constants/departments';
+
 const Directory: React.FC = () => {
-  const categories = [
-    {
-      title: "Executive Offices",
-      icon: Landmark,
-      depts: ["Office of the Mayor", "Office of the Vice Mayor", "Sangguniang Bayan (Legislative Council)"]
-    },
-    {
-      title: "Financial & Administrative",
-      icon: Wallet,
-      depts: ["Municipal Treasurer’s Office", "Municipal Budget Office", "Municipal Accounting Office", "Municipal Assessor’s Office"]
-    },
-    {
-      title: "Social & Public Services",
-      icon: HeartPulse,
-      depts: ["Municipal Health Office (MHO)", "Municipal Social Welfare and Development Office (MSWDO)", "Municipal Agriculture Office (MAO)"]
-    },
-    {
-      title: "Infrastructure & Planning",
-      icon: PencilRuler,
-      depts: ["Municipal Engineering Office", "Municipal Planning and Development Office (MPDO)"]
-    },
-    {
-      title: "Civil & Legal Services",
-      icon: Scale,
-      depts: ["Municipal Civil Registrar’s Office", "Municipal Legal Office"]
-    },
-    {
-      title: "Safety & Emergency",
-      icon: ShieldAlert,
-      depts: ["Municipal Disaster Risk Reduction and Management Office (MDRRMO)", "Bureau of Fire Protection (BFP) – Local Station", "Philippine National Police (PNP) – Local Station"]
-    },
-    {
-      title: "Environment & Community",
-      icon: Leaf,
-      depts: ["Municipal Environment and Natural Resources Office (MENRO)"]
-    },
-    {
-      title: "Business & Employment",
-      icon: TrendingUp,
-      depts: ["Business Permits and Licensing Office (BPLO)", "Public Employment Service Office (PESO)"]
-    },
-    {
-      title: "Culture, Education & Information",
-      icon: GraduationCap,
-      depts: ["Municipal Tourism Office", "Municipal Information Office", "Library Services (if available)"]
-    }
-  ];
+  const categories = DEPARTMENT_CATEGORIES.map(cat => {
+    let icon = Landmark;
+    if (cat.title === "Executive Offices") icon = Landmark;
+    else if (cat.title === "Financial & Administrative") icon = Wallet;
+    else if (cat.title === "Social & Public Services") icon = HeartPulse;
+    else if (cat.title === "Infrastructure & Planning") icon = PencilRuler;
+    else if (cat.title === "Civil & Legal Services") icon = Scale;
+    else if (cat.title === "Safety & Emergency") icon = ShieldAlert;
+    else if (cat.title === "Environment & Community") icon = Leaf;
+    else if (cat.title === "Business & Employment") icon = TrendingUp;
+    else if (cat.title === "Culture, Education & Information") icon = GraduationCap;
+    
+    return { ...cat, icon };
+  });
 
   return (
     <div className="space-y-16 py-10">
