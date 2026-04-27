@@ -59,11 +59,19 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
     setLoading(true);
     setError('');
     const provider = new GoogleAuthProvider();
+    // Force account selection to resolve some state conflicts
+    provider.setCustomParameters({ prompt: 'select_account' });
+    
     try {
       await signInWithPopup(auth, provider);
       onClose();
     } catch (err: any) {
-      setError(err.message);
+      console.error("Firebase Auth Error:", err.code, err.message);
+      if (err.code === 'auth/admin-restricted-operation') {
+        setError('Access restricted. Please ensure Google login is enabled in Firebase Console and new user sign-ups are not blocked.');
+      } else {
+        setError(err.message);
+      }
     } finally {
       setLoading(false);
     }

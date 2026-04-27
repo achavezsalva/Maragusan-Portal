@@ -14,7 +14,7 @@ import {
   Check
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { collection, onSnapshot, query, updateDoc, doc, orderBy, setDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, onSnapshot, query, updateDoc, doc, orderBy, setDoc, serverTimestamp, deleteDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth, UserProfile } from '../hooks/useAuth';
 import { ALL_DEPARTMENTS } from '../constants/departments';
@@ -63,6 +63,8 @@ const Admin: React.FC = () => {
     return matchesSearch && matchesRole;
   });
 
+  const isPending = (userId: string) => userId.startsWith('pre_auth:');
+
   const filteredDepts = ALL_DEPARTMENTS.filter(d => 
     d.toLowerCase().includes(deptSearch.toLowerCase())
   );
@@ -90,16 +92,34 @@ const Admin: React.FC = () => {
     }
   };
 
+  const handleDeleteUser = async () => {
+    if (!selectedUser) return;
+    
+    if (confirm(`Are you sure you want to permanently delete authorization for ${selectedUser.name}? This action cannot be undone.`)) {
+      try {
+        const userRef = doc(db, 'users', selectedUser.uid);
+        await deleteDoc(userRef);
+        setIsEditModalOpen(false);
+        setSelectedUser(null);
+      } catch (error) {
+        console.error("Error deleting user:", error);
+        alert("Failed to delete personnel. Check administrative permissions.");
+      }
+    }
+  };
+
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newName || !newEmail) return;
 
     try {
-      // Create a document with a random ID
-      const newUserRef = doc(collection(db, 'users'));
+      // Create a document with a deterministic ID for pre-authorization
+      const preAuthId = `pre_auth:${newEmail.toLowerCase().trim()}`;
+      const newUserRef = doc(db, 'users', preAuthId);
       await setDoc(newUserRef, {
+        uid: preAuthId,
         name: newName,
-        email: newEmail,
+        email: newEmail.toLowerCase().trim(),
         role: newRole,
         department_id: newRole === 'citizen' ? null : newDept,
         created_at: serverTimestamp(),
@@ -154,21 +174,27 @@ const Admin: React.FC = () => {
       </div>
 
       {/* Stats Quick View */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="glass-card p-6 border-l-4 border-l-brand-accent">
           <div className="text-[10px] font-black uppercase tracking-widest text-brand-text-dim mb-1">Total Personnel</div>
-          <div className="text-3xl font-display text-brand-text-bright">{users.length}</div>
+          <div className="text-3xl font-display text-brand-text-bright">{users.filter(u => !isPending(u.uid)).length}</div>
         </div>
         <div className="glass-card p-6 border-l-4 border-l-brand-secondary">
           <div className="text-[10px] font-black uppercase tracking-widest text-brand-text-dim mb-1">Municipal Staff</div>
           <div className="text-3xl font-display text-brand-text-bright">
-            {users.filter(u => u.role === 'staff' || u.role === 'admin').length}
+            {users.filter(u => !isPending(u.uid) && (u.role === 'staff' || u.role === 'admin')).length}
           </div>
         </div>
         <div className="glass-card p-6 border-l-4 border-l-brand-text-dim">
           <div className="text-[10px] font-black uppercase tracking-widest text-brand-text-dim mb-1">Public Citizens</div>
           <div className="text-3xl font-display text-brand-text-bright">
-            {users.filter(u => u.role === 'citizen').length}
+            {users.filter(u => !isPending(u.uid) && u.role === 'citizen').length}
+          </div>
+        </div>
+        <div className="glass-card p-6 border-l-4 border-l-yellow-500">
+          <div className="text-[10px] font-black uppercase tracking-widest text-brand-text-dim mb-1">Pending Portal Auth</div>
+          <div className="text-3xl font-display text-yellow-500">
+            {users.filter(u => isPending(u.uid)).length}
           </div>
         </div>
       </div>
@@ -224,7 +250,12 @@ const Admin: React.FC = () => {
                         {user.name[0]}
                       </div>
                       <div>
-                        <div className="text-sm font-bold text-brand-text-bright tracking-tight">{user.name}</div>
+                        <div className="text-sm font-bold text-brand-text-bright tracking-tight flex items-center gap-2">
+                          {user.name}
+                          {isPending(user.uid) && (
+                            <span className="text-[8px] px-1.5 py-0.5 bg-yellow-500/10 text-yellow-500 border border-yellow-500/20 rounded-full font-black uppercase tracking-widest">Pending</span>
+                          )}
+                        </div>
                         <div className="text-[10px] text-brand-text-dim font-black uppercase tracking-widest flex items-center gap-2">
                           <Mail size={10} /> {user.email}
                         </div>
@@ -353,18 +384,27 @@ const Admin: React.FC = () => {
               <div className="flex gap-4 pt-4">
                 <button 
                   type="button"
-                  onClick={() => setIsEditModalOpen(false)}
-                  className="flex-1 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest text-brand-text-dim border border-brand-border hover:bg-white/5 transition-all"
+                  onClick={handleDeleteUser}
+                  className="px-6 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest text-red-500 border border-red-500/20 hover:bg-red-500/5 transition-all"
                 >
-                  Abort Protocol
+                  Terminate
                 </button>
-                <button 
-                  type="button"
-                  onClick={handleUpdateUser}
-                  className="flex-1 py-4 rounded-2xl bg-brand-accent text-white text-[10px] font-black uppercase tracking-widest shadow-xl shadow-brand-accent/20 hover:bg-brand-accent/90 transition-all font-display"
-                >
-                  Apply Authorization
-                </button>
+                <div className="flex-1 flex gap-4">
+                  <button 
+                    type="button"
+                    onClick={() => setIsEditModalOpen(false)}
+                    className="flex-1 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest text-brand-text-dim border border-brand-border hover:bg-white/5 transition-all"
+                  >
+                    Abort
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={handleUpdateUser}
+                    className="flex-1 py-4 rounded-2xl bg-brand-accent text-white text-[10px] font-black uppercase tracking-widest shadow-xl shadow-brand-accent/20 hover:bg-brand-accent/90 transition-all font-display"
+                  >
+                    Apply Changes
+                  </button>
+                </div>
               </div>
             </motion.div>
           </div>

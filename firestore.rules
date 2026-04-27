@@ -10,7 +10,7 @@ service cloud.firestore {
     }
 
     function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-:\\.@]+$');
     }
 
     function incoming() {
@@ -46,7 +46,6 @@ service cloud.firestore {
     function isValidUser(data) {
       return data.keys().hasAll(['uid', 'name', 'email', 'role', 'created_at']) &&
              data.keys().size() <= 7 &&
-             data.uid == request.auth.uid &&
              data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
              data.email is string && data.email.size() > 0 &&
              data.role in ['admin', 'staff', 'citizen'] &&
@@ -79,9 +78,14 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      allow get: if isSignedIn();
+      allow get: if isSignedIn() && (userId == request.auth.uid || (request.auth.token.email != null && userId == 'pre_auth:' + request.auth.token.email.lower()));
       allow list: if isAdmin();
-      allow create: if isSignedIn() && isValidUser(incoming()) && (incoming().role != 'admin' || isAdmin());
+      allow delete: if isAdmin() || (isSignedIn() && request.auth.token.email != null && userId == 'pre_auth:' + request.auth.token.email.lower());
+      allow create: if isSignedIn() && isValidUser(incoming()) && (
+        (incoming().uid == request.auth.uid && incoming().role != 'admin') || 
+        isAdmin() ||
+        (incoming().uid == request.auth.uid && request.auth.token.email != null && exists(/databases/$(database)/documents/users/$( 'pre_auth:' + request.auth.token.email.lower() )))
+      );
       allow update: if isAdmin() || (
         isSignedIn() && userId == request.auth.uid && 
         isValidUser(incoming()) &&

@@ -86,8 +86,13 @@ const NavItem: React.FC<NavItemProps> = ({ label, to, dropdown }) => {
 const Layout = ({ children }: { children: React.ReactNode }) => {
   const { user, profile, isAdmin } = useAuth();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [openSubMenu, setOpenSubMenu] = useState<number | null>(null);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const location = useLocation();
+
+  const toggleSubMenu = (idx: number) => {
+    setOpenSubMenu(openSubMenu === idx ? null : idx);
+  };
 
   const menuItems: { label: string, to?: string, dropdown?: { label: string, to: string }[] }[] = [
     { label: 'Home', to: '/' },
@@ -153,8 +158,15 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
         Skip to main content
       </a>
 
-      <header className="py-8 bg-brand-bg border-b border-brand-border/30">
-        <div className="max-w-7xl mx-auto px-10 flex items-center justify-between">
+      <header 
+        className="relative py-12 bg-brand-bg border-b border-brand-border/30 overflow-hidden"
+        style={{
+          backgroundImage: "linear-gradient(rgba(10, 15, 30, 0.7), rgba(10, 15, 30, 0.7)), url('/about-img/about-maragusan.png')",
+          backgroundSize: 'cover',
+          backgroundPosition: 'center'
+        }}
+      >
+        <div className="max-w-7xl mx-auto px-10 flex items-center justify-between relative z-10">
           <Link to="/" className="flex items-center gap-6 group shrink-0" aria-label={`Home - ${MUNICIPAL_BRANDING.name}`}>
             <figure className="w-20 h-20 rounded-full flex items-center justify-center border border-brand-border group-hover:border-brand-accent transition-all overflow-hidden bg-white shadow-md font-sans">
                <img 
@@ -165,20 +177,20 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
                />
             </figure>
             <div className="flex flex-col">
-              <span className="font-display text-4xl tracking-tighter leading-none text-brand-text-bright group-hover:text-brand-accent transition-colors">
+              <span className="font-display text-4xl tracking-tighter leading-none text-[#FFD700] group-hover:text-white transition-colors drop-shadow-lg">
                 {MUNICIPAL_BRANDING.name}
               </span>
               <div className="flex items-center gap-3 mt-2">
-                <div className="h-px w-8 bg-brand-accent/50" />
-                <span className="text-[11px] text-brand-text-dim uppercase tracking-[0.4em] font-black italic group-hover:text-brand-accent/80 transition-colors">
+                <div className="h-px w-8 bg-[#FFD700]/50" />
+                <span className="text-[11px] text-white/90 uppercase tracking-[0.4em] font-black italic group-hover:text-white transition-colors drop-shadow-md">
                   {MUNICIPAL_BRANDING.portalName}
                 </span>
               </div>
             </div>
           </Link>
-          <div className="hidden md:flex flex-col items-end text-right">
-             <span className="text-[10px] font-black uppercase tracking-[0.3em] text-brand-text-dim mb-1">Official Digital Portal of</span>
-             <span className="text-xs font-bold text-brand-text-bright uppercase tracking-widest">{MUNICIPAL_BRANDING.fullName}</span>
+          <div className="hidden md:flex flex-col items-end text-right drop-shadow-lg">
+             <span className="text-[10px] font-black uppercase tracking-[0.3em] text-[#FFD700] mb-1">Official Digital Portal of</span>
+             <span className="text-xs font-bold text-white uppercase tracking-widest">{MUNICIPAL_BRANDING.fullName}</span>
           </div>
         </div>
       </header>
@@ -270,31 +282,53 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
               aria-label="Mobile menu"
             >
             {menuItems.map((item, idx) => (
-              <div key={idx} className="space-y-2">
+              <div key={idx} className="space-y-1">
                 {item.to ? (
                   <Link 
                     to={item.to} 
                     onClick={() => setIsMenuOpen(false)} 
-                    className="nav-link text-lg block py-2 px-4 rounded-lg hover:bg-brand-secondary/10 transition-all"
+                    className="nav-link text-lg block py-3 px-4 rounded-xl hover:bg-brand-secondary/10 transition-all font-medium border border-transparent hover:border-brand-border/30"
                   >
                     {item.label}
                   </Link>
                 ) : (
-                  <>
-                    <div className="text-[10px] font-black uppercase tracking-[0.2em] text-brand-accent mt-4 first:mt-0 px-4">{item.label}</div>
-                    <div className="grid grid-cols-1 gap-1 pl-4">
-                      {item.dropdown?.map((sub, sIdx) => (
-                        <Link 
-                          key={sIdx} 
-                          to={sub.to} 
-                          onClick={() => setIsMenuOpen(false)} 
-                          className="nav-link text-sm py-2 px-4 rounded-lg hover:bg-brand-secondary/10 transition-all text-brand-text-dim hover:text-brand-text-bright"
+                  <div className="space-y-1">
+                    <button 
+                      onClick={() => toggleSubMenu(idx)}
+                      className="w-full flex items-center justify-between text-lg py-3 px-4 rounded-xl hover:bg-brand-secondary/10 transition-all font-medium border border-transparent hover:border-brand-border/30 text-left"
+                    >
+                      <span>{item.label}</span>
+                      <ChevronDown 
+                        size={18} 
+                        className={`transition-transform duration-300 ${openSubMenu === idx ? 'rotate-180 text-brand-accent' : 'text-brand-text-dim'}`} 
+                      />
+                    </button>
+                    
+                    <AnimatePresence>
+                      {openSubMenu === idx && (
+                        <motion.div 
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          className="overflow-hidden bg-brand-secondary/5 rounded-xl ml-4 mr-2"
                         >
-                          {sub.label}
-                        </Link>
-                      ))}
-                    </div>
-                  </>
+                          <div className="py-2 grid grid-cols-1 gap-1">
+                            {item.dropdown?.map((sub, sIdx) => (
+                              <Link 
+                                key={sIdx} 
+                                to={sub.to} 
+                                onClick={() => setIsMenuOpen(false)} 
+                                className="nav-link text-sm py-2.5 px-6 rounded-lg hover:bg-brand-secondary/10 transition-all text-brand-text-dim hover:text-brand-text-bright flex items-center gap-3"
+                              >
+                                <div className="w-1 h-1 rounded-full bg-brand-accent/40" />
+                                {sub.label}
+                              </Link>
+                            ))}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
                 )}
               </div>
             ))}
