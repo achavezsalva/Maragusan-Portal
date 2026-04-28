@@ -73,11 +73,12 @@
       "properties": {
         "id": { "type": "string" },
         "user_id": { "type": "string" },
+        "user_name": { "type": "string" },
         "message": { "type": "string" },
         "status": { "type": "string" },
         "created_at": { "type": "string", "format": "date-time" }
       },
-      "required": ["id", "user_id", "message", "status", "created_at"]
+      "required": ["id", "user_id", "user_name", "message", "status", "created_at"]
     },
     "PortalConfiguration": {
       "title": "Portal Configuration",

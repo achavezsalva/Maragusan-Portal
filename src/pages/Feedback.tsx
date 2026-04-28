@@ -6,7 +6,10 @@ import {
   onSnapshot,
   addDoc,
   serverTimestamp,
-  orderBy
+  orderBy,
+  updateDoc,
+  deleteDoc,
+  doc
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../hooks/useAuth';
@@ -19,13 +22,17 @@ import {
   AlertCircle,
   X,
   MessageCircleQuestion,
-  ShieldCheck
+  ShieldCheck,
+  Trash2,
+  RotateCcw,
+  CheckCircle
 } from 'lucide-react';
 import { motion } from 'motion/react';
 
 interface FeedbackEntry {
   id: string;
   user_id: string;
+  user_name: string;
   message: string;
   status: string;
   created_at: any;
@@ -38,6 +45,10 @@ const Feedback: React.FC = () => {
   const [text, setText] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [deleteModal, setDeleteModal] = useState<{ open: boolean; id: string | null }>({
+    open: false,
+    id: null
+  });
 
   useEffect(() => {
     if (!user) {
@@ -45,28 +56,64 @@ const Feedback: React.FC = () => {
       return;
     }
 
-    const q = query(
-      collection(db, 'feedback'), 
-      where('user_id', '==', user.uid),
-      orderBy('created_at', 'desc')
-    );
+    const isAdmin = profile?.role === 'admin' || user.email?.toLowerCase() === 'achavezsalva@gmail.com';
+    const q = isAdmin 
+      ? query(collection(db, 'feedback'))
+      : query(
+          collection(db, 'feedback'), 
+          where('user_id', '==', user.uid)
+        );
 
     const unsub = onSnapshot(q, (snapshot) => {
-      setMessages(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as FeedbackEntry)));
+      const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as FeedbackEntry));
+      // In-memory sort since composite index might be missing
+      docs.sort((a, b) => {
+        const timeA = a.created_at?.seconds || 0;
+        const timeB = b.created_at?.seconds || 0;
+        return timeB - timeA;
+      });
+      setMessages(docs);
+      setLoading(false);
+    }, (err) => {
+      console.error("onSnapshot Error:", err);
+      const path = 'feedback';
+      const errInfo = {
+        error: err instanceof Error ? err.message : String(err),
+        operationType: 'list',
+        path,
+        authInfo: {
+          userId: user.uid,
+          email: user.email,
+          emailVerified: user.emailVerified,
+        }
+      };
+      console.error('Firestore List Error Details:', JSON.stringify(errInfo));
       setLoading(false);
     });
 
     return () => unsub();
-  }, [user]);
+  }, [user, profile]);
+
+  const isAdmin = profile?.role === 'admin' || (user && user.email?.toLowerCase() === 'achavezsalva@gmail.com');
+
+  useEffect(() => {
+    console.log("Identity Verification:", {
+      email: user?.email,
+      role: profile?.role,
+      isAdmin: isAdmin
+    });
+  }, [user, profile, isAdmin]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!text || !user) return;
     
     setSubmitting(true);
+    const path = 'feedback';
     try {
-      await addDoc(collection(db, 'feedback'), {
+      await addDoc(collection(db, path), {
         user_id: user.uid,
+        user_name: profile?.name || user.email || 'Anonymous Citizen',
         message: text,
         status: 'received',
         created_at: serverTimestamp(),
@@ -76,9 +123,71 @@ const Feedback: React.FC = () => {
       setTimeout(() => setSuccess(false), 5000);
     } catch (err) {
       console.error(err);
-      alert('Failed to submit feedback.');
+      const errInfo = {
+        error: err instanceof Error ? err.message : String(err),
+        operationType: 'write',
+        path,
+        authInfo: {
+          userId: user.uid,
+          email: user.email,
+          emailVerified: user.emailVerified,
+        }
+      };
+      console.error('Firestore Error Details:', JSON.stringify(errInfo));
+      alert('Failed to submit feedback. Check console for details.');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleStatusUpdate = async (feedbackId: string, currentStatus: string) => {
+    const newStatus = currentStatus === 'resolved' ? 'received' : 'resolved';
+    const path = `feedback/${feedbackId}`;
+    try {
+      await updateDoc(doc(db, 'feedback', feedbackId), { status: newStatus });
+    } catch (err) {
+      console.error("Failed to update status:", err);
+      const errInfo = {
+        error: err instanceof Error ? err.message : String(err),
+        operationType: 'update',
+        path,
+        authInfo: {
+          userId: user?.uid,
+          email: user?.email,
+          isAdmin: isAdmin
+        }
+      };
+      console.error('Firestore Update Error:', JSON.stringify(errInfo));
+      alert(`Update failed: ${errInfo.error}`);
+    }
+  };
+
+  const handleDelete = (feedbackId: string) => {
+    setDeleteModal({ open: true, id: feedbackId });
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteModal.id) return;
+
+    const path = `feedback/${deleteModal.id}`;
+    try {
+      await deleteDoc(doc(db, 'feedback', deleteModal.id));
+      setDeleteModal({ open: false, id: null });
+    } catch (err) {
+      console.error("Failed to delete feedback:", err);
+      const errInfo = {
+        error: err instanceof Error ? err.message : String(err),
+        operationType: 'delete',
+        path,
+        authInfo: {
+          userId: user?.uid,
+          email: user?.email,
+          isAdmin: isAdmin
+        }
+      };
+      console.error('Firestore Delete Error:', JSON.stringify(errInfo));
+      alert(`Delete failed: ${errInfo.error}`);
+      setDeleteModal({ open: false, id: null });
     }
   };
 
@@ -160,7 +269,10 @@ const Feedback: React.FC = () => {
 
         <div className="space-y-8">
           <div className="flex items-center justify-between pb-4 border-b border-brand-border">
-            <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-brand-text-dim">Interaction Log</h3>
+            <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-brand-text-dim flex items-center gap-2">
+              Interaction Log
+              {isAdmin && <span className="bg-brand-accent/20 text-brand-accent px-1.5 py-0.5 rounded text-[8px] uppercase tracking-tighter">Admin Active</span>}
+            </h3>
             {user && messages.length > 0 && <span className="text-[10px] font-bold text-brand-accent">{messages.length} ENTRIES</span>}
           </div>
 
@@ -177,16 +289,41 @@ const Feedback: React.FC = () => {
               messages.map(m => (
                 <div key={m.id} className="glass-card p-6 space-y-4 hover:border-brand-accent transition-colors group" role="listitem">
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold text-brand-text-dim uppercase tracking-widest">
-                      {m.created_at?.seconds ? format(m.created_at.toDate(), 'MMMM d') : 'Pending'}
-                    </span>
-                    <span className={`px-2 py-0.5 border rounded-[4px] text-[8px] font-black uppercase tracking-widest ${
-                      m.status === 'resolved' ? 'border-green-400 text-green-400' : 'border-brand-accent text-brand-accent'
-                    }`}>
-                      {m.status}
-                    </span>
+                    <div className="flex flex-col">
+                      <span className="text-[10px] font-black text-brand-text-bright uppercase tracking-widest mb-1">
+                        {m.user_name}
+                      </span>
+                      <span className="text-[9px] font-bold text-brand-text-dim uppercase tracking-widest">
+                        {m.created_at?.seconds ? format(m.created_at.toDate(), 'MMMM d, yyyy') : 'Processing...'}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={`px-2 py-0.5 border rounded-[4px] text-[8px] font-black uppercase tracking-widest ${
+                        m.status === 'resolved' ? 'border-green-400 text-green-400' : 'border-brand-accent text-brand-accent'
+                      }`}>
+                        {m.status}
+                      </span>
+                      {isAdmin && (
+                        <div className="flex items-center gap-1">
+                          <button 
+                            onClick={() => handleStatusUpdate(m.id, m.status)}
+                            className="p-2 text-brand-text-bright hover:text-brand-accent transition-colors bg-white/10 rounded-md border border-brand-border"
+                            title={m.status === 'resolved' ? 'Mark as Received' : 'Mark as Resolved'}
+                          >
+                            {m.status === 'resolved' ? <RotateCcw size={14} /> : <CheckCircle size={14} />}
+                          </button>
+                          <button 
+                            onClick={() => handleDelete(m.id)}
+                            className="p-2 text-brand-text-bright hover:text-red-500 transition-colors bg-white/10 rounded-md border border-brand-border"
+                            title="Delete Permanently"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  <p className="text-brand-text-dim text-xs leading-relaxed italic line-clamp-2">"{m.message}"</p>
+                  <p className="text-brand-text-dim text-xs leading-relaxed italic border-l-2 border-brand-accent/20 pl-4 py-1">"{m.message}"</p>
                 </div>
               ))
             ) : (
@@ -197,6 +334,62 @@ const Feedback: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {deleteModal.open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6" role="dialog" aria-modal="true">
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setDeleteModal({ open: false, id: null })}
+            className="absolute inset-0 bg-brand-bg/80 backdrop-blur-sm"
+          />
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95, y: 10 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            className="relative w-full max-w-md glass-card p-8 space-y-6 border-red-500/30 shadow-2xl shadow-red-500/10"
+          >
+            <div className="flex items-center gap-4 text-red-500">
+              <div className="p-3 bg-red-500/10 rounded-xl">
+                <AlertCircle size={24} />
+              </div>
+              <div>
+                <h3 className="text-lg font-display uppercase tracking-tight text-brand-text-bright">Confirm Deletion</h3>
+                <p className="text-[10px] font-black uppercase tracking-widest text-brand-text-dim">Irreversible Administrative Action</p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <p className="text-xs text-brand-text-dim leading-relaxed italic border-l-2 border-red-500/20 pl-4">
+                "Are you absolutely certain you want to permanently remove this record from the interaction log? This operation cannot be reversed."
+              </p>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-center gap-3 pt-4">
+              <button 
+                onClick={handleConfirmDelete}
+                className="w-full py-3 bg-red-500 hover:bg-red-600 text-white text-[10px] font-black uppercase tracking-[0.2em] rounded-lg transition-colors flex items-center justify-center gap-2"
+              >
+                <Trash2 size={12} /> Confirm Removal
+              </button>
+              <button 
+                onClick={() => setDeleteModal({ open: false, id: null })}
+                className="w-full py-3 bg-white/5 hover:bg-white/10 text-brand-text-dim text-[10px] font-black uppercase tracking-[0.2em] rounded-lg transition-colors border border-brand-border"
+              >
+                Cancel
+              </button>
+            </div>
+
+            <button 
+              onClick={() => setDeleteModal({ open: false, id: null })}
+              className="absolute top-4 right-4 p-2 text-brand-text-dim hover:text-brand-text-bright transition-colors"
+              aria-label="Close Modal"
+            >
+              <X size={16} />
+            </button>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 };

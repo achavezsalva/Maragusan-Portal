@@ -32,7 +32,10 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return isSignedIn() && (hasRole('admin') || request.auth.token.email == 'achavezsalva@gmail.com');
+      return isSignedIn() && (
+        (request.auth.token.email != null && request.auth.token.email.lower() == 'achavezsalva@gmail.com') ||
+        hasRole('admin')
+      );
     }
 
     function isStaff() {
@@ -53,7 +56,7 @@ service cloud.firestore {
     }
 
     function isValidAnnouncement(data) {
-      return data.keys().hasAll(['id', 'title', 'content', 'department_id', 'author_id', 'created_at']) &&
+      return data.keys().hasAll(['title', 'content', 'department_id', 'author_id', 'created_at']) &&
              data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
              data.content is string && data.content.size() > 0 &&
              data.department_id is string &&
@@ -62,7 +65,7 @@ service cloud.firestore {
     }
 
     function isValidServiceRequest(data) {
-      return data.keys().hasAll(['id', 'user_id', 'service_type', 'status', 'created_at']) &&
+      return data.keys().hasAll(['user_id', 'service_type', 'status', 'created_at']) &&
              data.user_id == request.auth.uid &&
              data.service_type is string &&
              data.status in ['pending', 'processing', 'completed'] &&
@@ -70,8 +73,9 @@ service cloud.firestore {
     }
 
     function isValidFeedback(data) {
-      return data.keys().hasAll(['id', 'user_id', 'message', 'status', 'created_at']) &&
+      return data.keys().hasAll(['user_id', 'user_name', 'message', 'status', 'created_at']) &&
              data.user_id == request.auth.uid &&
+             data.user_name is string && data.user_name.size() > 0 &&
              data.message is string &&
              data.status is string &&
              data.created_at == request.time;
@@ -123,15 +127,15 @@ service cloud.firestore {
     match /service_requests/{requestId} {
       allow list: if isAdmin() || (isSignedIn() && resource.data.user_id == request.auth.uid);
       allow get: if isAdmin() || (isSignedIn() && resource.data.user_id == request.auth.uid);
-      allow create: if isCitizen() && isValidServiceRequest(incoming());
+      allow create: if isSignedIn() && isValidServiceRequest(incoming());
       allow update: if isAdmin() || (isStaff() && incoming().diff(existing()).affectedKeys().hasOnly(['status']));
       allow delete: if isAdmin();
     }
 
     match /feedback/{feedbackId} {
-      allow list: if isAdmin();
+      allow list: if isAdmin() || (isSignedIn() && resource.data.user_id == request.auth.uid);
       allow get: if isAdmin() || (isSignedIn() && resource.data.user_id == request.auth.uid);
-      allow create: if isCitizen() && isValidFeedback(incoming());
+      allow create: if isSignedIn() && isValidFeedback(incoming());
       allow update: if isAdmin();
       allow delete: if isAdmin();
     }

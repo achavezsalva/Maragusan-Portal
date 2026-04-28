@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import { auth } from './lib/firebase';
-import { LogOut, Home, Menu, User, Bell, FileText, MessageSquare, LayoutDashboard, Shield, Building, ChevronDown, Search, LayoutGrid } from 'lucide-react';
+import { LogOut, Home, Menu, User, Bell, FileText, MessageSquare, LayoutDashboard, Shield, Building, ChevronDown, LayoutGrid } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { MUNICIPAL_BRANDING } from './constants';
 
@@ -189,9 +189,11 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
               </div>
             </div>
           </Link>
-          <div className="hidden md:flex flex-col items-end text-right drop-shadow-lg">
-             <span className="text-[10px] font-black uppercase tracking-[0.3em] text-[#FFD700] mb-1">Official Digital Portal of</span>
-             <span className="text-xs font-bold text-white uppercase tracking-widest">{MUNICIPAL_BRANDING.fullName}</span>
+          <div className="hidden md:flex flex-col items-end gap-2">
+            <div className="text-right flex flex-col items-end drop-shadow-lg">
+               <div className="text-[10px] font-black uppercase tracking-[0.3em] text-[#FFD700]">Official Digital Portal of</div>
+               <div className="text-xs font-bold text-white uppercase tracking-widest mt-1">{MUNICIPAL_BRANDING.fullName}</div>
+            </div>
           </div>
         </div>
       </header>
@@ -220,21 +222,13 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
 
         <div className="absolute right-10 flex items-center gap-6">
           <ul className="flex items-center gap-2 lg:gap-4" role="list">
-            <li className="hidden sm:block">
-              <button 
-                className="p-2.5 text-brand-text-dim hover:text-brand-accent transition-all cursor-pointer bg-white/5 rounded-lg border border-transparent hover:border-brand-border"
-                aria-label="Search portal content"
-              >
-                <Search size={18} strokeWidth={1.5} aria-hidden="true" />
-              </button>
-            </li>
-            
+
             <li className="hidden sm:flex items-center gap-4">
               {user ? (
                 <div className="flex items-center gap-3 lg:gap-4 group">
                   <div className="hidden xl:flex text-right flex-col justify-center">
                     <span className="text-xs font-black uppercase tracking-widest leading-none text-brand-text-bright">{profile?.name}</span>
-                    <span className="text-[9px] text-brand-text-dim uppercase tracking-[0.2em] font-bold mt-1 italic">{profile?.role}</span>
+                    <span className="text-[9px] text-brand-text-dim uppercase tracking-[0.2em] font-bold mt-1 italic">{profile?.role} Clearance</span>
                   </div>
                   <div className="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center text-sm font-black text-brand-accent border border-brand-border group-hover:border-brand-accent transition-all shadow-sm">
                     {profile?.name.split(' ').map(n => n[0]).join('')}
@@ -254,7 +248,6 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
                   title="Administrative Portal Access"
                 >
                   <LayoutGrid size={18} strokeWidth={2} className="group-hover:rotate-90 transition-transform duration-500" />
-                  
                 </button>
               )}
             </li>
@@ -359,6 +352,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
         </AnimatePresence>
         <LoginModal isOpen={isLoginModalOpen} onClose={() => setIsLoginModalOpen(false)} />
       </nav>
+
 
       <main 
         id="main-content"

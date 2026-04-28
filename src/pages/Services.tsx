@@ -61,12 +61,21 @@ const Services: React.FC = () => {
 
     const q = query(
       collection(db, 'service_requests'), 
-      where('user_id', '==', user.uid),
-      orderBy('created_at', 'desc')
+      where('user_id', '==', user.uid)
     );
 
     const unsub = onSnapshot(q, (snapshot) => {
-      setRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ServiceRequest)));
+      const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ServiceRequest));
+      // In-memory sort since composite index might be missing
+      docs.sort((a, b) => {
+        const timeA = a.created_at?.seconds || 0;
+        const timeB = b.created_at?.seconds || 0;
+        return timeB - timeA;
+      });
+      setRequests(docs);
+      setLoading(false);
+    }, (err) => {
+      console.error("onSnapshot Error:", err);
       setLoading(false);
     });
 
