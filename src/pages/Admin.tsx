@@ -20,7 +20,7 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { collection, onSnapshot, query, updateDoc, doc, orderBy, setDoc, serverTimestamp, deleteDoc, getDocs, writeBatch } from 'firebase/firestore';
+import { collection, onSnapshot, query, setDoc, doc, deleteDoc, updateDoc, writeBatch, orderBy } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth, UserProfile } from '../hooks/useAuth';
 import { ALL_DEPARTMENTS, ALL_DEPT_DETAILS, DepartmentInfo } from '../constants/departments';
@@ -57,28 +57,22 @@ const Admin: React.FC = () => {
   useEffect(() => {
     if (!isAdmin) return;
 
-    // Personnel Listener
-    const qUsers = query(collection(db, 'users'), orderBy('created_at', 'desc'));
-    const unsubUsers = onSnapshot(qUsers, (snapshot) => {
-      const usersList = snapshot.docs.map(doc => ({
-        ...doc.data(),
-        uid: doc.id
-      })) as UserProfile[];
+    const usersQuery = query(collection(db, 'users'), orderBy('created_at', 'desc'));
+    const unsubscribeUsers = onSnapshot(usersQuery, (snapshot) => {
+      const usersList: any[] = [];
+      snapshot.forEach((doc) => usersList.push({ ...doc.data() }));
       setUsers(usersList);
     });
 
-    // Departments Listener
-    const qDepts = query(collection(db, 'departments'));
-    const unsubDepts = onSnapshot(qDepts, (snapshot) => {
-      const deptsList = snapshot.docs.map(doc => ({
-        ...doc.data(),
-      })) as DepartmentInfo[];
+    const unsubscribeDepts = onSnapshot(collection(db, 'departments'), (snapshot) => {
+      const deptsList: any[] = [];
+      snapshot.forEach((doc) => deptsList.push({ ...doc.data() }));
       setDepartments(deptsList);
     });
 
     return () => {
-      unsubUsers();
-      unsubDepts();
+      unsubscribeUsers();
+      unsubscribeDepts();
     };
   }, [isAdmin]);
 
@@ -88,7 +82,7 @@ const Admin: React.FC = () => {
     setIsSyncing(true);
     try {
       const batch = writeBatch(db);
-      ALL_DEPT_DETAILS.forEach(dept => {
+      ALL_DEPT_DETAILS.forEach((dept) => {
         const docRef = doc(db, 'departments', dept.id);
         batch.set(docRef, dept);
       });
@@ -134,11 +128,11 @@ const Admin: React.FC = () => {
     if (!selectedUser) return;
     
     try {
-      const userRef = doc(db, 'users', selectedUser.uid);
-      await updateDoc(userRef, {
+      await updateDoc(doc(db, 'users', selectedUser.uid), {
         role: editRole,
         department_id: editRole === 'citizen' ? null : editDept
       });
+      
       setIsEditModalOpen(false);
       setSelectedUser(null);
     } catch (error) {
@@ -150,8 +144,8 @@ const Admin: React.FC = () => {
     if (!deptForm || !selectedDept) return;
     
     try {
-      const deptRef = doc(db, 'departments', selectedDept.id);
-      await setDoc(deptRef, deptForm);
+      await setDoc(doc(db, 'departments', selectedDept.id), deptForm);
+      
       setIsDeptEditModalOpen(false);
       setSelectedDept(null);
       setDeptForm(null);
@@ -166,8 +160,8 @@ const Admin: React.FC = () => {
     
     if (confirm(`Are you sure you want to permanently delete authorization for ${selectedUser.name}? This action cannot be undone.`)) {
       try {
-        const userRef = doc(db, 'users', selectedUser.uid);
-        await deleteDoc(userRef);
+        await deleteDoc(doc(db, 'users', selectedUser.uid));
+          
         setIsEditModalOpen(false);
         setSelectedUser(null);
       } catch (error) {
@@ -184,14 +178,13 @@ const Admin: React.FC = () => {
     try {
       // Create a document with a deterministic ID for pre-authorization
       const preAuthId = `pre_auth:${newEmail.toLowerCase().trim()}`;
-      const newUserRef = doc(db, 'users', preAuthId);
-      await setDoc(newUserRef, {
+      await setDoc(doc(db, 'users', preAuthId), {
         uid: preAuthId,
         name: newName,
         email: newEmail.toLowerCase().trim(),
         role: newRole,
         department_id: newRole === 'citizen' ? null : newDept,
-        created_at: serverTimestamp(),
+        created_at: new Date().toISOString()
       });
       
       // Reset form

@@ -1,16 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { 
-  collection, 
-  query, 
-  where, 
-  onSnapshot,
-  addDoc,
-  serverTimestamp,
-  orderBy,
-  updateDoc,
-  deleteDoc,
-  doc
-} from 'firebase/firestore';
+import { collection, onSnapshot, query, addDoc, updateDoc, deleteDoc, doc, orderBy, where, serverTimestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../hooks/useAuth';
 import { format } from 'date-fns';
@@ -39,7 +28,7 @@ interface FeedbackEntry {
 }
 
 const Feedback: React.FC = () => {
-  const { user, profile } = useAuth();
+  const { user, profile, isAdmin } = useAuth();
   const [messages, setMessages] = useState<FeedbackEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [text, setText] = useState('');
@@ -56,52 +45,23 @@ const Feedback: React.FC = () => {
       return;
     }
 
-    const isAdmin = profile?.role === 'admin' || user.email?.toLowerCase() === 'achavezsalva@gmail.com';
-    const q = isAdmin 
-      ? query(collection(db, 'feedback'))
-      : query(
-          collection(db, 'feedback'), 
-          where('user_id', '==', user.uid)
-        );
+    let feedbackQuery = query(collection(db, 'feedback'), orderBy('created_at', 'desc'));
+    
+    if (!isAdmin) {
+      feedbackQuery = query(collection(db, 'feedback'), where('user_id', '==', user.uid), orderBy('created_at', 'desc'));
+    }
 
-    const unsub = onSnapshot(q, (snapshot) => {
-      const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as FeedbackEntry));
-      // In-memory sort since composite index might be missing
-      docs.sort((a, b) => {
-        const timeA = a.created_at?.seconds || 0;
-        const timeB = b.created_at?.seconds || 0;
-        return timeB - timeA;
-      });
-      setMessages(docs);
+    const unsubscribe = onSnapshot(feedbackQuery, (snapshot) => {
+      const fbList: FeedbackEntry[] = [];
+      snapshot.forEach((doc) => fbList.push({ id: doc.id, ...(doc.data() as any) }));
+      setMessages(fbList);
       setLoading(false);
-    }, (err) => {
-      console.error("onSnapshot Error:", err);
-      const path = 'feedback';
-      const errInfo = {
-        error: err instanceof Error ? err.message : String(err),
-        operationType: 'list',
-        path,
-        authInfo: {
-          userId: user.uid,
-          email: user.email,
-          emailVerified: user.emailVerified,
-        }
-      };
-      console.error('Firestore List Error Details:', JSON.stringify(errInfo));
+    }, (error) => {
+      console.error("Feedback subscription error:", error);
       setLoading(false);
     });
 
-    return () => unsub();
-  }, [user, profile]);
-
-  const isAdmin = profile?.role === 'admin' || (user && user.email?.toLowerCase() === 'achavezsalva@gmail.com');
-
-  useEffect(() => {
-    console.log("Identity Verification:", {
-      email: user?.email,
-      role: profile?.role,
-      isAdmin: isAdmin
-    });
+    return () => unsubscribe();
   }, [user, profile, isAdmin]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -109,32 +69,21 @@ const Feedback: React.FC = () => {
     if (!text || !user) return;
     
     setSubmitting(true);
-    const path = 'feedback';
     try {
-      await addDoc(collection(db, path), {
+      await addDoc(collection(db, 'feedback'), {
         user_id: user.uid,
-        user_name: profile?.name || user.email || 'Anonymous Citizen',
+        user_name: profile?.name || user.displayName || user.email || 'Anonymous Citizen',
         message: text,
         status: 'received',
-        created_at: serverTimestamp(),
+        created_at: serverTimestamp()
       });
+
       setText('');
       setSuccess(true);
       setTimeout(() => setSuccess(false), 5000);
     } catch (err) {
       console.error(err);
-      const errInfo = {
-        error: err instanceof Error ? err.message : String(err),
-        operationType: 'write',
-        path,
-        authInfo: {
-          userId: user.uid,
-          email: user.email,
-          emailVerified: user.emailVerified,
-        }
-      };
-      console.error('Firestore Error Details:', JSON.stringify(errInfo));
-      alert('Failed to submit feedback. Check console for details.');
+      alert('Failed to submit feedback.');
     } finally {
       setSubmitting(false);
     }
@@ -142,23 +91,13 @@ const Feedback: React.FC = () => {
 
   const handleStatusUpdate = async (feedbackId: string, currentStatus: string) => {
     const newStatus = currentStatus === 'resolved' ? 'received' : 'resolved';
-    const path = `feedback/${feedbackId}`;
     try {
-      await updateDoc(doc(db, 'feedback', feedbackId), { status: newStatus });
-    } catch (err) {
+      await updateDoc(doc(db, 'feedback', feedbackId), {
+        status: newStatus
+      });
+    } catch (err: any) {
       console.error("Failed to update status:", err);
-      const errInfo = {
-        error: err instanceof Error ? err.message : String(err),
-        operationType: 'update',
-        path,
-        authInfo: {
-          userId: user?.uid,
-          email: user?.email,
-          isAdmin: isAdmin
-        }
-      };
-      console.error('Firestore Update Error:', JSON.stringify(errInfo));
-      alert(`Update failed: ${errInfo.error}`);
+      alert(`Update failed: ${err.message}`);
     }
   };
 
@@ -169,24 +108,12 @@ const Feedback: React.FC = () => {
   const handleConfirmDelete = async () => {
     if (!deleteModal.id) return;
 
-    const path = `feedback/${deleteModal.id}`;
     try {
       await deleteDoc(doc(db, 'feedback', deleteModal.id));
       setDeleteModal({ open: false, id: null });
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to delete feedback:", err);
-      const errInfo = {
-        error: err instanceof Error ? err.message : String(err),
-        operationType: 'delete',
-        path,
-        authInfo: {
-          userId: user?.uid,
-          email: user?.email,
-          isAdmin: isAdmin
-        }
-      };
-      console.error('Firestore Delete Error:', JSON.stringify(errInfo));
-      alert(`Delete failed: ${errInfo.error}`);
+      alert(`Delete failed: ${err.message}`);
       setDeleteModal({ open: false, id: null });
     }
   };
@@ -294,7 +221,7 @@ const Feedback: React.FC = () => {
                         {m.user_name}
                       </span>
                       <span className="text-[9px] font-bold text-brand-text-dim uppercase tracking-widest">
-                        {m.created_at?.seconds ? format(m.created_at.toDate(), 'MMMM d, yyyy') : 'Processing...'}
+                        {m.created_at ? (typeof m.created_at.toDate === 'function' ? format(m.created_at.toDate(), 'MMMM d, yyyy') : format(new Date(m.created_at), 'MMMM d, yyyy')) : 'Processing...'}
                       </span>
                     </div>
                     <div className="flex items-center gap-2">

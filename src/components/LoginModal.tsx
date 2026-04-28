@@ -1,13 +1,6 @@
 import React, { useState } from 'react';
-import { 
-  signInWithEmailAndPassword, 
-  createUserWithEmailAndPassword,
-  updateProfile,
-  GoogleAuthProvider,
-  signInWithPopup
-} from 'firebase/auth';
-import { auth, db } from '../lib/firebase';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, updateProfile } from 'firebase/auth';
+import { auth } from '../lib/firebase';
 import { Mail, Lock, User, ShieldCheck, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -32,18 +25,8 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
     try {
       if (isRegistering) {
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-        const user = userCredential.user;
-        
-        await updateProfile(user, { displayName: name });
-        
-        // Create profile in Firestore
-        await setDoc(doc(db, 'users', user.uid), {
-          uid: user.uid,
-          name: name,
-          email: email,
-          role: 'citizen',
-          created_at: serverTimestamp(),
-        });
+        await updateProfile(userCredential.user, { displayName: name });
+        alert('Registration successful!');
       } else {
         await signInWithEmailAndPassword(auth, email, password);
       }
@@ -58,20 +41,14 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
   const handleGoogleSignIn = async () => {
     setLoading(true);
     setError('');
-    const provider = new GoogleAuthProvider();
-    // Force account selection to resolve some state conflicts
-    provider.setCustomParameters({ prompt: 'select_account' });
     
     try {
+      const provider = new GoogleAuthProvider();
       await signInWithPopup(auth, provider);
       onClose();
     } catch (err: any) {
-      console.error("Firebase Auth Error:", err.code, err.message);
-      if (err.code === 'auth/admin-restricted-operation') {
-        setError('Access restricted. Please ensure Google login is enabled in Firebase Console and new user sign-ups are not blocked.');
-      } else {
-        setError(err.message);
-      }
+      console.error("Firebase Auth Error:", err.message);
+      setError(err.message);
     } finally {
       setLoading(false);
     }

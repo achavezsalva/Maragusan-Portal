@@ -1,13 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { 
-  collection, 
-  query, 
-  where, 
-  onSnapshot,
-  addDoc,
-  serverTimestamp,
-  orderBy
-} from 'firebase/firestore';
+import { collection, onSnapshot, query, addDoc, doc, orderBy, where, serverTimestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../hooks/useAuth';
 import { format } from 'date-fns';
@@ -59,27 +51,23 @@ const Services: React.FC = () => {
       return;
     }
 
-    const q = query(
+    const requestsQuery = query(
       collection(db, 'service_requests'), 
-      where('user_id', '==', user.uid)
+      where('user_id', '==', user.uid),
+      orderBy('created_at', 'desc')
     );
 
-    const unsub = onSnapshot(q, (snapshot) => {
-      const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ServiceRequest));
-      // In-memory sort since composite index might be missing
-      docs.sort((a, b) => {
-        const timeA = a.created_at?.seconds || 0;
-        const timeB = b.created_at?.seconds || 0;
-        return timeB - timeA;
-      });
-      setRequests(docs);
+    const unsubscribe = onSnapshot(requestsQuery, (snapshot) => {
+      const requestsList: ServiceRequest[] = [];
+      snapshot.forEach((doc) => requestsList.push({ id: doc.id, ...(doc.data() as any) }));
+      setRequests(requestsList);
       setLoading(false);
-    }, (err) => {
-      console.error("onSnapshot Error:", err);
+    }, (error) => {
+      console.error("Service requests snapshot error:", error);
       setLoading(false);
     });
 
-    return () => unsub();
+    return () => unsubscribe();
   }, [user]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -92,8 +80,9 @@ const Services: React.FC = () => {
         user_id: user.uid,
         service_type: serviceType,
         status: 'pending',
-        created_at: serverTimestamp(),
+        created_at: serverTimestamp()
       });
+      
       setShowModal(false);
       setServiceType('');
     } catch (err) {
@@ -169,7 +158,7 @@ const Services: React.FC = () => {
                     <h3 className="text-xl font-bold">{req.service_type}</h3>
                     <div className="flex items-center gap-1.5 text-[10px] text-brand-text-dim uppercase tracking-widest">
                       <Clock size={12} aria-hidden="true" />
-                      Filing Date: {req.created_at?.seconds ? format(req.created_at.toDate(), 'MMMM d, yyyy') : 'Pending Verification'}
+                      Filing Date: {req.created_at ? (typeof req.created_at.toDate === 'function' ? format(req.created_at.toDate(), 'MMMM d, yyyy') : format(new Date(req.created_at), 'MMMM d, yyyy')) : 'Pending Verification'}
                     </div>
                   </div>
 

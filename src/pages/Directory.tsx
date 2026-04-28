@@ -24,7 +24,10 @@ const Directory: React.FC = () => {
   useEffect(() => {
     const q = query(collection(db, 'departments'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const depts = snapshot.docs.map(doc => doc.data() as DepartmentInfo);
+      const depts: any[] = [];
+      snapshot.forEach((doc) => {
+        depts.push({ ...doc.data() });
+      });
       setDynamicDepts(depts);
       setLoading(false);
     });

@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './hooks/useAuth';
+import { signOut } from 'firebase/auth';
 import { auth } from './lib/firebase';
 import { LogOut, Home, Menu, User, Bell, FileText, MessageSquare, LayoutDashboard, Shield, Building, ChevronDown, LayoutGrid } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -28,14 +29,29 @@ interface NavItemProps {
 const NavItem: React.FC<NavItemProps> = ({ label, to, dropdown }) => {
   const [isOpen, setIsOpen] = useState(false);
   const location = useLocation();
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const isActive = to ? location.pathname === to : dropdown?.some(item => location.pathname === item.to);
+
+  // Close dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isOpen]);
 
   if (dropdown) {
     return (
       <div 
+        ref={dropdownRef}
         className="relative group h-full flex items-center"
-        onMouseEnter={() => setIsOpen(true)}
-        onMouseLeave={() => setIsOpen(false)}
         onKeyDown={(e) => e.key === 'Escape' && setIsOpen(false)}
       >
         <button 
@@ -87,13 +103,30 @@ const NavItem: React.FC<NavItemProps> = ({ label, to, dropdown }) => {
 const Layout = ({ children }: { children: React.ReactNode }) => {
   const { user, profile, isAdmin } = useAuth();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [openSubMenu, setOpenSubMenu] = useState<number | null>(null);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const location = useLocation();
+  const profileRef = useRef<HTMLDivElement>(null);
 
   const toggleSubMenu = (idx: number) => {
     setOpenSubMenu(openSubMenu === idx ? null : idx);
   };
+
+  // Close profile dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (profileRef.current && !profileRef.current.contains(event.target as Node)) {
+        setIsProfileOpen(false);
+      }
+    };
+    if (isProfileOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isProfileOpen]);
 
   const menuItems: { label: string, to?: string, dropdown?: { label: string, to: string }[] }[] = [
     { label: 'Home', to: '/' },
@@ -149,6 +182,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
     },
   ];
 
+
   return (
     <div className="min-h-screen bg-brand-bg text-brand-text-bright font-sans antialiased flex flex-col">
       {/* Skip to main content link for keyboard users */}
@@ -199,7 +233,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
       </header>
 
       <nav 
-        className="h-16 bg-brand-bg border-b border-brand-border sticky top-0 z-50 px-10 flex items-center justify-center relative"
+        className={`h-16 bg-brand-bg border-b border-brand-border sticky top-0 z-50 px-10 flex items-center ${user ? 'justify-start' : 'justify-center'} relative`}
         role="navigation"
         aria-label="Main Navigation"
       >
@@ -213,11 +247,6 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
               dropdown={item.dropdown} 
             />
           ))}
-          {isAdmin && (
-            <Link to="/admin" className={`nav-link flex items-center gap-2 py-2 px-3 rounded-lg transition-all duration-300 bg-brand-accent/10 border border-brand-accent/20 text-brand-accent hover:bg-brand-accent/20 ${location.pathname === '/admin' ? 'active' : ''}`}>
-              <Shield size={14} /> Admin
-            </Link>
-          )}
         </div>
 
         <div className="absolute right-10 flex items-center gap-6">
@@ -225,21 +254,52 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
 
             <li className="hidden sm:flex items-center gap-4">
               {user ? (
-                <div className="flex items-center gap-3 lg:gap-4 group">
-                  <div className="hidden xl:flex text-right flex-col justify-center">
-                    <span className="text-xs font-black uppercase tracking-widest leading-none text-brand-text-bright">{profile?.name}</span>
-                    <span className="text-[9px] text-brand-text-dim uppercase tracking-[0.2em] font-bold mt-1 italic">{profile?.role} Clearance</span>
-                  </div>
-                  <div className="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center text-sm font-black text-brand-accent border border-brand-border group-hover:border-brand-accent transition-all shadow-sm">
-                    {profile?.name.split(' ').map(n => n[0]).join('')}
-                  </div>
+                <div className="relative" ref={profileRef}>
                   <button 
-                    onClick={() => auth.signOut()}
-                    className="p-2.5 text-brand-text-dim hover:text-red-600 bg-slate-50 rounded-lg border border-transparent hover:border-red-200 transition-all font-sans"
-                    title="Terminate Session"
+                    onClick={() => setIsProfileOpen(!isProfileOpen)}
+                    className="flex items-center gap-2 group focus:outline-none"
+                    aria-haspopup="true"
+                    aria-expanded={isProfileOpen}
                   >
-                    <LogOut size={18} strokeWidth={1.5} />
+                    <div className="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center text-sm font-black text-brand-accent border border-brand-border group-hover:border-brand-accent transition-all shadow-sm">
+                      {profile?.name.split(' ').map(n => n[0]).join('')}
+                    </div>
+                    <ChevronDown size={14} className={`text-brand-text-dim transition-transform duration-300 ${isProfileOpen ? 'rotate-180' : ''}`} />
                   </button>
+
+                  <AnimatePresence>
+                    {isProfileOpen && (
+                      <motion.div 
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: 10 }}
+                        className="absolute right-0 mt-2 w-56 bg-brand-card border border-brand-border rounded-xl shadow-2xl py-2 z-[100] backdrop-blur-xl"
+                      >
+                        <div className="px-4 py-3 border-b border-brand-border mb-2 bg-brand-bg/50">
+                          <div className="text-xs font-black uppercase tracking-widest leading-tight text-brand-text-bright">{profile?.name}</div>
+                          <div className="text-[9px] text-brand-text-dim uppercase tracking-[0.2em] font-bold mt-1.5 italic">{profile?.role} Clearance</div>
+                        </div>
+                        {isAdmin && (
+                          <Link 
+                            to="/admin" 
+                            className="flex items-center gap-2 px-4 py-2.5 text-[11px] font-black uppercase tracking-widest text-brand-text-dim hover:text-brand-accent hover:bg-brand-accent/10 transition-all"
+                            onClick={() => setIsProfileOpen(false)}
+                          >
+                            <Shield size={14} /> Admin
+                          </Link>
+                        )}
+                        <button 
+                          onClick={() => {
+                            setIsProfileOpen(false);
+                            signOut(auth);
+                          }}
+                          className="w-full flex items-center gap-2 px-4 py-2.5 text-[11px] font-black uppercase tracking-widest text-red-600 hover:bg-red-50 transition-all text-left"
+                        >
+                          <LogOut size={14} /> Logout
+                        </button>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
               ) : (
                 <button 
@@ -409,6 +469,7 @@ export default function App() {
             <Route path="/directory/:deptId" element={<DepartmentDetail />} />
             <Route path="/admin" element={<Admin />} />
             <Route path="/staff" element={<Announcements />} />
+            <Route path="*" element={<LandingPage />} />
           </Routes>
         </Layout>
       </AuthProvider>

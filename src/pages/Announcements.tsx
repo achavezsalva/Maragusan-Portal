@@ -1,15 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { 
-  collection, 
-  query, 
-  orderBy, 
-  onSnapshot,
-  addDoc,
-  deleteDoc,
-  doc,
-  serverTimestamp,
-  updateDoc
-} from 'firebase/firestore';
+import { collection, onSnapshot, query, addDoc, updateDoc, deleteDoc, doc, orderBy, serverTimestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../hooks/useAuth';
 import { format } from 'date-fns';
@@ -38,7 +28,7 @@ interface Announcement {
 
 interface Department {
   id: string;
-  department_name: string;
+  name: string;
 }
 
 const Announcements: React.FC = () => {
@@ -56,21 +46,25 @@ const Announcements: React.FC = () => {
   const [isEditing, setIsEditing] = useState<string | null>(null);
 
   useEffect(() => {
-    // Fetch Departments
-    const deptUnsub = onSnapshot(collection(db, 'departments'), (snapshot) => {
-      setDepartments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Department)));
+    // Depts listener
+    const deptsUnsubscribe = onSnapshot(collection(db, 'departments'), (snapshot) => {
+      const depts: Department[] = [];
+      snapshot.forEach((doc) => depts.push({ id: doc.id, ...(doc.data() as any) }));
+      setDepartments(depts);
     });
 
-    // Fetch Announcements
-    const q = query(collection(db, 'announcements'), orderBy('created_at', 'desc'));
-    const annUnsub = onSnapshot(q, (snapshot) => {
-      setAnnouncements(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Announcement)));
+    // Announcements listener
+    const annQuery = query(collection(db, 'announcements'), orderBy('created_at', 'desc'));
+    const annUnsubscribe = onSnapshot(annQuery, (snapshot) => {
+      const anns: Announcement[] = [];
+      snapshot.forEach((doc) => anns.push({ id: doc.id, ...(doc.data() as any) }));
+      setAnnouncements(anns);
       setLoading(false);
     });
 
     return () => {
-      deptUnsub();
-      annUnsub();
+      deptsUnsubscribe();
+      annUnsubscribe();
     };
   }, []);
 
@@ -84,6 +78,7 @@ const Announcements: React.FC = () => {
           title,
           content,
           department_id: deptId,
+          updated_at: serverTimestamp()
         });
       } else {
         await addDoc(collection(db, 'announcements'), {
@@ -91,13 +86,13 @@ const Announcements: React.FC = () => {
           content,
           department_id: deptId,
           author_id: user?.uid,
-          created_at: serverTimestamp(),
+          created_at: serverTimestamp()
         });
       }
       resetForm();
     } catch (err) {
       console.error(err);
-      alert('Error saving announcement. Check console for details.');
+      alert('Error saving announcement.');
     }
   };
 
@@ -111,7 +106,12 @@ const Announcements: React.FC = () => {
 
   const handleDelete = async (id: string) => {
     if (window.confirm('Are you sure you want to delete this announcement?')) {
-      await deleteDoc(doc(db, 'announcements', id));
+      try {
+        await deleteDoc(doc(db, 'announcements', id));
+      } catch (error) {
+        console.error("Delete Error:", error);
+        alert("Failed to delete announcement.");
+      }
     }
   };
 
@@ -160,7 +160,7 @@ const Announcements: React.FC = () => {
             role="tab"
             aria-selected={filterDept === dept.id}
           >
-            {dept.department_name}
+            {dept.name}
           </button>
         ))}
       </div>
@@ -176,14 +176,14 @@ const Announcements: React.FC = () => {
               <div className="flex justify-between items-start">
                 <div className="space-y-2">
                   <span className="inline-block px-3 py-1 border border-brand-accent text-brand-accent rounded-full text-[9px] font-black uppercase tracking-widest">
-                    {departments.find(d => d.id === ann.department_id)?.department_name || 'General'}
+                    {departments.find(d => d.id === ann.department_id)?.name || 'General'}
                   </span>
                   <p className="text-[10px] text-brand-text-dim uppercase tracking-widest">
-                    {ann.created_at?.seconds ? format(ann.created_at.toDate(), 'MMMM d, yyyy') : 'Recently Published'}
+                    {ann.created_at ? (typeof ann.created_at.toDate === 'function' ? format(ann.created_at.toDate(), 'MMMM d, yyyy') : format(new Date(ann.created_at), 'MMMM d, yyyy')) : 'Recently Published'}
                   </p>
                 </div>
  
-                {(isAdmin || (isStaff && ann.author_id === user?.uid)) && (
+                {(isAdmin || (isStaff && ann.author_id === user?.id)) && (
                   <div className="flex gap-4">
                     <button 
                       onClick={() => {
@@ -277,7 +277,7 @@ const Announcements: React.FC = () => {
                 >
                   <option value="">Select Section</option>
                   {departments.map(d => (
-                    <option key={d.id} value={d.id}>{d.department_name}</option>
+                    <option key={d.id} value={d.id}>{d.name}</option>
                   ))}
                 </select>
               </div>

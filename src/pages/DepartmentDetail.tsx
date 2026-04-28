@@ -24,8 +24,8 @@ const DepartmentDetail: React.FC = () => {
   useEffect(() => {
     if (!deptId) return;
 
-    // Listen to Firestore first
-    const unsubscribe = onSnapshot(doc(db, 'departments', deptId), (docSnap) => {
+    const docRef = doc(db, 'departments', deptId);
+    const unsubscribe = onSnapshot(docRef, (docSnap) => {
       if (docSnap.exists()) {
         setDepartment(docSnap.data() as DepartmentInfo);
       } else {
