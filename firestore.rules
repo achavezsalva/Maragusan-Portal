@@ -34,7 +34,7 @@ service cloud.firestore {
     function isAdmin() {
       return isSignedIn() && (
         (request.auth.token.email != null && request.auth.token.email.lower() == 'achavezsalva@gmail.com') ||
-        hasRole('admin')
+        (getUserData() != null && getUserData().role == 'admin')
       );
     }
 
@@ -42,17 +42,23 @@ service cloud.firestore {
       return isSignedIn() && hasRole('staff');
     }
 
+    function isStaffInDept(deptId) {
+      let data = getUserData();
+      return data != null && data.role == 'staff' && data.department_id == deptId;
+    }
+
     function isCitizen() {
       return isSignedIn() && hasRole('citizen');
     }
 
     function isValidUser(data) {
-      return data.keys().hasAll(['uid', 'name', 'email', 'role', 'created_at']) &&
-             data.keys().size() <= 7 &&
-             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
-             data.email is string && data.email.size() > 0 &&
+      let requiredFields = ['uid', 'name', 'email', 'role', 'created_at'];
+      return data.keys().hasAll(requiredFields) &&
+             data.keys().size() <= 12 &&
+             data.name is string &&
+             data.email is string &&
              data.role in ['admin', 'staff', 'citizen'] &&
-             data.created_at == request.time;
+             (data.created_at is string || data.created_at == request.time);
     }
 
     function isValidAnnouncement(data) {
@@ -91,26 +97,33 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      allow get: if isSignedIn() && (userId == request.auth.uid || (request.auth.token.email != null && userId == 'pre_auth:' + request.auth.token.email.lower()));
-      allow list: if isAdmin();
-      allow delete: if isAdmin() || (isSignedIn() && request.auth.token.email != null && userId == 'pre_auth:' + request.auth.token.email.lower());
-      allow create: if isSignedIn() && isValidUser(incoming()) && (
-        (incoming().uid == request.auth.uid && incoming().role != 'admin') || 
-        isAdmin() ||
-        (incoming().uid == request.auth.uid && request.auth.token.email != null && exists(/databases/$(database)/documents/users/$( 'pre_auth:' + request.auth.token.email.lower() )))
+      allow get: if isSignedIn() && (
+        userId == request.auth.uid || 
+        isAdmin() || 
+        (isStaff() && resource.data.get('department_id', '') == getUserData().get('department_id', '')) ||
+        (request.auth.token.email != null && userId == 'pre_auth:' + request.auth.token.email.lower())
       );
-      allow update: if isAdmin() || (
-        isSignedIn() && userId == request.auth.uid && 
-        isValidUser(incoming()) &&
-        incoming().role == existing().role &&
-        incoming().diff(existing()).affectedKeys().hasOnly(['name', 'email'])
+      // More restrictive list gate for staff
+      allow list: if isSignedIn() && (isAdmin() || (isStaff() && resource.data.department_id == getUserData().department_id)); 
+      
+      allow delete: if isAdmin() || (isSignedIn() && request.auth.token.email != null && userId == 'pre_auth:' + request.auth.token.email.lower());
+      
+      allow create: if isSignedIn() && isValidUser(incoming()) && (
+        isAdmin() || 
+        incoming().uid == request.auth.uid ||
+        (request.auth.token.email != null && exists(/databases/$(database)/documents/users/$( 'pre_auth:' + request.auth.token.email.lower() )))
+      );
+      
+      allow update: if isSignedIn() && (
+        isAdmin() || 
+        (userId == request.auth.uid && isValidUser(incoming()))
       );
     }
 
     match /departments/{departmentId} {
       allow read: if true;
-      allow create: if isAdmin() && isValidDepartment(incoming());
-      allow update: if isAdmin() && isValidDepartment(incoming());
+      allow create: if (isAdmin() || (isStaff() && getUserData().department_id == departmentId)) && isValidDepartment(incoming());
+      allow update: if (isAdmin() || (isStaff() && getUserData().department_id == departmentId)) && isValidDepartment(incoming());
       allow delete: if isAdmin();
     }
 

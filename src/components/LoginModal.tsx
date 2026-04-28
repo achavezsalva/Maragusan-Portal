@@ -32,7 +32,16 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
       }
       onClose();
     } catch (err: any) {
-      setError(err.message);
+      console.error("Firebase Auth Error:", err.code, err.message);
+      if (err.code === 'auth/operation-not-allowed') {
+        setError('PROVIDER DISABLED: Please enable Email/Password or Google Login in your Firebase Console (Authentication > Sign-in method).');
+      } else if (err.code === 'auth/invalid-credential') {
+        setError('ACCESS DENIED: Credentials not recognized. If you were recently invited by an admin, you MUST use the "Create Staff Identity Account" option below first to set up your password.');
+      } else if (err.code === 'auth/too-many-requests') {
+        setError('SYSTEM LOCKOUT: Too many attempts. Access is temporarily suspended for this IP. Please wait 15 minutes before re-attempting.');
+      } else {
+        setError(err.message);
+      }
     } finally {
       setLoading(false);
     }
@@ -44,11 +53,18 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
     
     try {
       const provider = new GoogleAuthProvider();
+      // Ensure specific domain if needed, but usually just popup is enough
       await signInWithPopup(auth, provider);
       onClose();
     } catch (err: any) {
-      console.error("Firebase Auth Error:", err.message);
-      setError(err.message);
+      console.error("Firebase Auth Error:", err.code, err.message);
+      if (err.code === 'auth/operation-not-allowed') {
+        setError('GOOGLE LOGIN DISABLED: You must enable Google as a Sign-in provider in your Firebase Console.');
+      } else if (err.code === 'auth/invalid-credential') {
+        setError('SESSION EXPIRED: Please refresh the page and try logging in with Google again.');
+      } else {
+        setError(err.message);
+      }
     } finally {
       setLoading(false);
     }
@@ -205,15 +221,6 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
               </svg>
               Sign in with Google
             </button>
-
-            <div className="text-center pt-6 border-t border-brand-border">
-              <button
-                onClick={() => setIsRegistering(!isRegistering)}
-                className="text-brand-text-dim text-[10px] font-black uppercase tracking-widest hover:text-brand-accent transition-colors"
-              >
-                {isRegistering ? 'Return to authentication' : 'Request new credentials'}
-              </button>
-            </div>
           </motion.div>
         </div>
       )}

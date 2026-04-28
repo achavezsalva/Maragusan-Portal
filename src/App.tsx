@@ -1,11 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import { signOut } from 'firebase/auth';
 import { auth } from './lib/firebase';
-import { LogOut, Home, Menu, User, Bell, FileText, MessageSquare, LayoutDashboard, Shield, Building, ChevronDown, LayoutGrid } from 'lucide-react';
+import { LogOut, Home, Menu, User, Bell, FileText, MessageSquare, LayoutDashboard, Shield, Building, ChevronDown, LayoutGrid, AlertTriangle, Key, CheckCircle, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { MUNICIPAL_BRANDING } from './constants';
+import { doc, getDoc, setDoc, deleteDoc, writeBatch } from 'firebase/firestore';
+import { db } from './lib/firebase';
 
 // Pages
 import LandingPage from './pages/LandingPage';
@@ -17,6 +19,7 @@ import Barangays from './pages/Barangays';
 import About from './pages/About';
 import Officials from './pages/Officials';
 import Admin from './pages/Admin';
+import StaffDashboard from './pages/StaffDashboard';
 import DepartmentDetail from './pages/DepartmentDetail';
 import LoginModal from './components/LoginModal';
 
@@ -101,13 +104,83 @@ const NavItem: React.FC<NavItemProps> = ({ label, to, dropdown }) => {
 };
 
 const Layout = ({ children }: { children: React.ReactNode }) => {
-  const { user, profile, isAdmin } = useAuth();
+  const { user, profile, isAdmin, needsVerification } = useAuth();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [openSubMenu, setOpenSubMenu] = useState<number | null>(null);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const [accessKeyInput, setAccessKeyInput] = useState('');
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [verificationError, setVerificationError] = useState('');
+  const [verificationSuccess, setVerificationSuccess] = useState(false);
+  const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
   const profileRef = useRef<HTMLDivElement>(null);
+
+  const confirmLogout = async () => {
+    try {
+      setIsLogoutModalOpen(false);
+      setIsProfileOpen(false);
+      setIsMenuOpen(false);
+      await signOut(auth);
+      navigate('/');
+    } catch (error) {
+      console.error("Logout error:", error);
+    }
+  };
+
+  const handleLogoutClick = () => {
+    setIsLogoutModalOpen(true);
+    setIsProfileOpen(false);
+  };
+
+  const handleVerifyKey = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || !profile || !accessKeyInput) return;
+
+    setIsVerifying(true);
+    setVerificationError('');
+
+    try {
+      if (profile.access_key === accessKeyInput.trim()) {
+        // Key matches! Link profile to actual UID and mark as claimed
+        const batch = writeBatch(db);
+        const normalizedEmail = user.email?.toLowerCase().trim();
+        const preAuthId = `pre_auth:${normalizedEmail}`;
+        
+        // 1. Create the permanent user profile with real UID
+        const newUserProfile = {
+          ...profile,
+          uid: user.uid,
+          is_claimed: true,
+          access_key: null // Remove key after claim
+        };
+        batch.set(doc(db, 'users', user.uid), newUserProfile);
+        
+        // 2. Delete the pre-auth record
+        batch.delete(doc(db, 'users', preAuthId));
+        
+        await batch.commit();
+        
+        // Show success before reload
+        setIsVerifying(false);
+        setVerificationSuccess(true);
+        
+        // Auto-reload after 3 seconds to let them see the success message
+        setTimeout(() => {
+          window.location.reload();
+        }, 3000);
+      } else {
+        setVerificationError('Invalid access key. Verification failed. Please check the key provided by your administrator.');
+      }
+    } catch (error) {
+      console.error("Verification error:", error);
+      setVerificationError(`Verification Protocol Failure: ${error instanceof Error ? error.message : 'Unknown system error'}`);
+    } finally {
+      setIsVerifying(false);
+    }
+  };
 
   const toggleSubMenu = (idx: number) => {
     setOpenSubMenu(openSubMenu === idx ? null : idx);
@@ -233,7 +306,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
       </header>
 
       <nav 
-        className={`h-16 bg-brand-bg border-b border-brand-border sticky top-0 z-50 px-10 flex items-center ${user ? 'justify-start' : 'justify-center'} relative`}
+        className="h-16 bg-brand-bg border-b border-brand-border sticky top-0 z-50 px-10 flex items-center justify-center relative"
         role="navigation"
         aria-label="Main Navigation"
       >
@@ -285,14 +358,20 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
                             className="flex items-center gap-2 px-4 py-2.5 text-[11px] font-black uppercase tracking-widest text-brand-text-dim hover:text-brand-accent hover:bg-brand-accent/10 transition-all"
                             onClick={() => setIsProfileOpen(false)}
                           >
-                            <Shield size={14} /> Admin
+                            <Shield size={14} /> Admin Dashboard
+                          </Link>
+                        )}
+                        {profile?.role === 'staff' && (
+                          <Link 
+                            to="/staff" 
+                            className="flex items-center gap-2 px-4 py-2.5 text-[11px] font-black uppercase tracking-widest text-brand-text-dim hover:text-brand-accent hover:bg-brand-accent/10 transition-all"
+                            onClick={() => setIsProfileOpen(false)}
+                          >
+                            <LayoutDashboard size={14} /> Sector Portal
                           </Link>
                         )}
                         <button 
-                          onClick={() => {
-                            setIsProfileOpen(false);
-                            signOut(auth);
-                          }}
+                          onClick={handleLogoutClick}
                           className="w-full flex items-center gap-2 px-4 py-2.5 text-[11px] font-black uppercase tracking-widest text-red-600 hover:bg-red-50 transition-all text-left"
                         >
                           <LogOut size={14} /> Logout
@@ -395,6 +474,15 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
                 <Shield size={18} /> Admin Console
               </Link>
             )}
+            {profile?.role === 'staff' && (
+              <Link 
+                to="/staff" 
+                onClick={() => setIsMenuOpen(false)} 
+                className="flex items-center gap-3 nav-link text-lg block py-3 px-4 rounded-lg bg-brand-accent/10 border border-brand-accent/20 text-brand-accent mt-4"
+              >
+                <LayoutDashboard size={18} /> Sector Portal
+              </Link>
+            )}
             {!user && (
               <button 
                 onClick={() => {
@@ -411,7 +499,164 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
         )}
         </AnimatePresence>
         <LoginModal isOpen={isLoginModalOpen} onClose={() => setIsLoginModalOpen(false)} />
+
+        {/* Logout Confirmation Modal */}
+        <AnimatePresence>
+          {isLogoutModalOpen && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setIsLogoutModalOpen(false)}
+                className="absolute inset-0 bg-brand-bg/80 backdrop-blur-md"
+              />
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                className="relative w-full max-w-sm bg-white border border-brand-border rounded-[2rem] overflow-hidden shadow-2xl shadow-black/10"
+              >
+                <div className="p-8 text-center space-y-6">
+                  <div className="w-16 h-16 bg-red-50 text-red-600 rounded-2xl flex items-center justify-center mx-auto shadow-sm">
+                    <LogOut size={32} />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <h3 className="text-xl font-display uppercase tracking-tight text-brand-text-bright">
+                      Logout Confirmation
+                    </h3>
+                    <p className="text-xs text-brand-text-dim font-medium uppercase tracking-widest leading-relaxed">
+                      Are you sure you want to end your session? You will be redirected to the public portal.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <button
+                      onClick={() => setIsLogoutModalOpen(false)}
+                      className="py-4 rounded-xl text-[10px] font-black uppercase tracking-widest border border-brand-border hover:bg-slate-50 transition-all text-brand-text-dim"
+                    >
+                      Stay Authenticated
+                    </button>
+                    <button
+                      onClick={confirmLogout}
+                      className="py-4 rounded-xl text-[10px] font-black uppercase tracking-widest bg-red-600 text-white hover:bg-red-700 shadow-lg shadow-red-600/20 transition-all font-bold"
+                    >
+                      Confirm Logout
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
       </nav>
+
+      {/* Identity Verification Overlay */}
+      <AnimatePresence>
+        {needsVerification && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 backdrop-blur-xl bg-brand-bg/90">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              className={`relative w-full max-w-md bg-brand-bg border ${verificationSuccess ? 'border-brand-accent/50' : 'border-brand-accent/30'} rounded-[2.5rem] shadow-2xl p-10 space-y-8 transition-all duration-500`}
+            >
+              {verificationSuccess ? (
+                <div className="flex flex-col items-center text-center space-y-8 py-4">
+                  <motion.div 
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    transition={{ type: 'spring', damping: 10, stiffness: 100 }}
+                    className="w-24 h-24 bg-brand-accent/20 rounded-full flex items-center justify-center text-brand-accent border-2 border-brand-accent shadow-2xl shadow-brand-accent/40"
+                  >
+                    <CheckCircle size={56} />
+                  </motion.div>
+                  
+                  <div className="space-y-3">
+                    <h2 className="text-3xl font-display text-brand-text-bright uppercase tracking-tight">Identity Claimed</h2>
+                    <p className="text-[10px] text-brand-text-dim uppercase tracking-[0.2em] font-black italic">Clearance Level: {profile?.role}</p>
+                  </div>
+
+                  <div className="bg-brand-accent/5 p-6 rounded-2xl border border-brand-accent/10 w-full">
+                    <p className="text-xs text-brand-text-bright leading-relaxed">
+                      Identity synchronization with municipal registers is complete.<br/>
+                      <span className="font-bold text-brand-accent">Welcome to the administration, {profile?.name}.</span>
+                    </p>
+                  </div>
+
+                  <div className="space-y-4 w-full">
+                    <div className="flex items-center justify-center gap-3 text-[10px] font-black uppercase tracking-widest text-brand-text-dim">
+                      <RefreshCw size={12} className="animate-spin" />
+                      Initializing Portal Environment...
+                    </div>
+                    <button 
+                      onClick={() => window.location.reload()}
+                      className="w-full py-4 rounded-2xl bg-brand-accent text-white text-[10px] font-black uppercase tracking-widest shadow-xl shadow-brand-accent/20 hover:bg-blue-900 transition-all font-display"
+                    >
+                      Enter Portal Now
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="flex flex-col items-center text-center space-y-6">
+                    <div className="w-20 h-20 bg-brand-accent/10 rounded-3xl flex items-center justify-center text-brand-accent border border-brand-accent/20">
+                      <Key size={40} />
+                    </div>
+                    <div className="space-y-2">
+                      <h2 className="text-2xl font-display text-brand-text-bright uppercase tracking-tight">Identity Validation</h2>
+                      <p className="text-[10px] text-brand-text-dim uppercase tracking-[0.2em] font-black italic">Claim Administrative Sector Profile</p>
+                    </div>
+                    <div className="bg-brand-accent/5 p-6 rounded-2xl border border-brand-accent/10 w-full text-center">
+                      <p className="text-xs text-brand-text-bright leading-relaxed">
+                        Welcome, <span className="font-black text-brand-accent uppercase">{profile?.name}</span>. 
+                        An administrator has pre-authorized your clearance for the <span className="font-black uppercase">{profile?.department_id}</span>.
+                        Please enter your <span className="font-bold">Access Key</span> to finalize enrollment.
+                      </p>
+                    </div>
+                  </div>
+
+                  <form onSubmit={handleVerifyKey} className="space-y-6">
+                    <div className="space-y-2">
+                      <div className="relative">
+                        <input 
+                          required
+                          type="password"
+                          placeholder="ENTER ACCESS KEY"
+                          className="w-full bg-white/5 border border-brand-border rounded-2xl px-6 py-4 text-center text-sm font-mono tracking-[0.5em] font-bold text-brand-text-bright focus:border-brand-accent outline-none"
+                          value={accessKeyInput}
+                          onChange={(e) => setAccessKeyInput(e.target.value.toUpperCase())}
+                        />
+                      </div>
+                      {verificationError && (
+                        <p className="text-[10px] text-red-500 font-black uppercase tracking-widest text-center mt-2 flex items-center justify-center gap-2">
+                          <AlertTriangle size={12} /> {verificationError}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="flex flex-col gap-3">
+                      <button 
+                        disabled={isVerifying}
+                        className="w-full py-4 rounded-2xl bg-brand-accent text-white text-[10px] font-black uppercase tracking-widest shadow-xl shadow-brand-accent/20 hover:bg-blue-900 transition-all font-display disabled:opacity-50"
+                      >
+                        {isVerifying ? 'Verifying Credentials...' : 'Finalize Identity Claim'}
+                      </button>
+                      <button 
+                        type="button"
+                        onClick={handleLogoutClick}
+                        className="w-full py-2 text-[10px] font-black uppercase tracking-widest text-brand-text-dim hover:text-brand-text-bright transition-all"
+                      >
+                        Cancel & Sign Out
+                      </button>
+                    </div>
+                  </form>
+                </>
+              )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
 
       <main 
@@ -468,7 +713,7 @@ export default function App() {
             <Route path="/feedback" element={<Feedback />} />
             <Route path="/directory/:deptId" element={<DepartmentDetail />} />
             <Route path="/admin" element={<Admin />} />
-            <Route path="/staff" element={<Announcements />} />
+            <Route path="/staff" element={<StaffDashboard />} />
             <Route path="*" element={<LandingPage />} />
           </Routes>
         </Layout>

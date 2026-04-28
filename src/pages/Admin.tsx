@@ -17,7 +17,10 @@ import {
   Save,
   Phone,
   MapPin,
-  RefreshCw
+  RefreshCw,
+  AlertTriangle,
+  CheckCircle,
+  Copy
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { collection, onSnapshot, query, setDoc, doc, deleteDoc, updateDoc, writeBatch, orderBy } from 'firebase/firestore';
@@ -40,6 +43,14 @@ const Admin: React.FC = () => {
   const [deptSearch, setDeptSearch] = useState('');
   const [isDeptDropdownOpen, setIsDeptDropdownOpen] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [registrationStatus, setRegistrationStatus] = useState<{
+    show: boolean;
+    success: boolean;
+    message: string;
+    email?: string;
+    key?: string;
+  }>({ show: false, success: false, message: '' });
 
   // Form State for editing user
   const [editRole, setEditRole] = useState<UserProfile['role']>('citizen');
@@ -50,6 +61,22 @@ const Admin: React.FC = () => {
   const [newEmail, setNewEmail] = useState('');
   const [newRole, setNewRole] = useState<UserProfile['role']>('staff');
   const [newDept, setNewDept] = useState('');
+  const [newAccessKey, setNewAccessKey] = useState('');
+
+  const generateAccessKey = () => {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let key = 'LGU-';
+    for (let i = 0; i < 8; i++) {
+       key += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    setNewAccessKey(key);
+  };
+
+  useEffect(() => {
+    if (isAddModalOpen && !newAccessKey && (newRole === 'staff' || newRole === 'admin')) {
+      generateAccessKey();
+    }
+  }, [isAddModalOpen, newRole]);
 
   // Form state for editing department
   const [deptForm, setDeptForm] = useState<DepartmentInfo | null>(null);
@@ -157,17 +184,21 @@ const Admin: React.FC = () => {
 
   const handleDeleteUser = async () => {
     if (!selectedUser) return;
+    setIsDeleteModalOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!selectedUser) return;
     
-    if (confirm(`Are you sure you want to permanently delete authorization for ${selectedUser.name}? This action cannot be undone.`)) {
-      try {
-        await deleteDoc(doc(db, 'users', selectedUser.uid));
-          
-        setIsEditModalOpen(false);
-        setSelectedUser(null);
-      } catch (error) {
-        console.error("Error deleting user:", error);
-        alert("Failed to delete personnel. Check administrative permissions.");
-      }
+    try {
+      await deleteDoc(doc(db, 'users', selectedUser.uid));
+        
+      setIsDeleteModalOpen(false);
+      setIsEditModalOpen(false);
+      setSelectedUser(null);
+    } catch (error) {
+      console.error("Error deleting user:", error);
+      alert("Failed to delete personnel. Check administrative permissions.");
     }
   };
 
@@ -184,18 +215,34 @@ const Admin: React.FC = () => {
         email: newEmail.toLowerCase().trim(),
         role: newRole,
         department_id: newRole === 'citizen' ? null : newDept,
+        access_key: newAccessKey,
+        is_claimed: false,
         created_at: new Date().toISOString()
       });
       
+      // Feedback to user
+      setRegistrationStatus({
+        show: true,
+        success: true,
+        message: `Personnel identity profile successfully queued in municipal registers.`,
+        email: newEmail.toLowerCase().trim(),
+        key: newAccessKey
+      });
+
       // Reset form
       setNewName('');
       setNewEmail('');
       setNewRole('staff');
       setNewDept('');
+      setNewAccessKey('');
       setIsAddModalOpen(false);
     } catch (error) {
       console.error("Error adding user:", error);
-      alert("Failed to add user. Check permissions.");
+      setRegistrationStatus({
+        show: true,
+        success: false,
+        message: `Clearance Denied: ${error instanceof Error ? error.message : 'Check administrative permissions'}.`
+      });
     }
   };
 
@@ -285,6 +332,36 @@ const Admin: React.FC = () => {
             </div>
           </div>
 
+          {/* Quick Help Protocol */}
+          <div className="bg-brand-accent/5 border border-brand-accent/10 rounded-2xl p-6 flex flex-col md:flex-row items-center gap-6">
+            <div className="w-12 h-12 bg-brand-accent/20 rounded-full flex items-center justify-center text-brand-accent shrink-0">
+              <Shield size={24} />
+            </div>
+            <div className="flex-1 space-y-1">
+              <h4 className="text-[10px] font-black uppercase tracking-widest text-brand-accent">Enrollment Protocol Notice</h4>
+              <p className="text-xs text-brand-text-bright leading-relaxed">
+                Personnel marked as <span className="text-yellow-500 font-bold uppercase">Pending</span> have been authorized but have not yet claimed their identity. 
+                <span className="font-bold"> Instructions:</span> Staff must log in using their matching Google Email, then enter the <span className="font-bold">Access Key</span> (visible in the ledger below) to finalize their clearance.
+              </p>
+            </div>
+            <div className="flex items-center gap-4 py-2 px-4 bg-white/5 rounded-xl border border-brand-border">
+               <div className="flex flex-col items-center">
+                 <span className="text-[8px] font-black uppercase tracking-widest text-brand-text-dim">Step 1</span>
+                 <span className="text-[10px] font-bold text-brand-text-bright">Admin Registers</span>
+               </div>
+               <div className="w-4 h-px bg-brand-border" />
+               <div className="flex flex-col items-center">
+                 <span className="text-[8px] font-black uppercase tracking-widest text-brand-text-dim">Step 2</span>
+                 <span className="text-[10px] font-bold text-brand-text-bright">Create/Login</span>
+               </div>
+               <div className="w-4 h-px bg-brand-border" />
+               <div className="flex flex-col items-center">
+                 <span className="text-[8px] font-black uppercase tracking-widest text-brand-text-dim">Step 3</span>
+                 <span className="text-[10px] font-bold text-brand-text-bright">Claim Identity</span>
+               </div>
+            </div>
+          </div>
+
           {/* Control Bar Personnel */}
           <div className="flex flex-col lg:flex-row gap-4 items-center">
             <div className="relative flex-1 w-full">
@@ -342,8 +419,13 @@ const Admin: React.FC = () => {
                                 <span className="text-[8px] px-1.5 py-0.5 bg-yellow-500/10 text-yellow-500 border border-yellow-500/20 rounded-full font-black uppercase tracking-widest">Pending</span>
                               )}
                             </div>
-                            <div className="text-[10px] text-brand-text-dim font-black uppercase tracking-widest flex items-center gap-2">
-                              <Mail size={10} /> {user.email}
+                            <div className="text-[10px] text-brand-text-dim font-black uppercase tracking-widest flex flex-col gap-1 mt-1">
+                              <span className="flex items-center gap-2"><Mail size={10} /> {user.email}</span>
+                              {isPending(user.uid) && user.access_key && (
+                                <span className="text-brand-accent font-mono text-[9px] flex items-center gap-2">
+                                  <Shield size={10} /> KEY: {user.access_key}
+                                </span>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -364,12 +446,33 @@ const Admin: React.FC = () => {
                         </div>
                       </td>
                       <td className="px-6 py-5 text-right">
-                        <button 
-                          onClick={() => handleEditClick(user)}
-                          className="p-2 text-brand-text-dim hover:text-brand-accent hover:bg-brand-accent/10 rounded-lg transition-all"
-                        >
-                          <MoreVertical size={18} />
-                        </button>
+                        <div className="flex items-center justify-end gap-2">
+                          {isPending(user.uid) && (
+                            <button 
+                              onClick={() => {
+                                const msg = `Municipal Portal Authorization:
+Hi ${user.name}, you have been invited for ${user.role} access.
+1. Visit ${window.location.origin}
+2. Click "SIGN IN WITH GOOGLE"
+3. Use your email: ${user.email}
+4. Once logged in, enter your verification key: ${user.access_key}
+Stay safe, citizen.`;
+                                navigator.clipboard.writeText(msg);
+                                alert("Authorization instructions copied to clipboard.");
+                              }}
+                              title="Copy Invite Instructions"
+                              className="p-2 text-brand-accent hover:bg-brand-accent/10 rounded-lg transition-all"
+                            >
+                              <Copy size={16} />
+                            </button>
+                          )}
+                          <button 
+                            onClick={() => handleEditClick(user)}
+                            className="p-2 text-brand-text-dim hover:text-brand-accent hover:bg-brand-accent/10 rounded-lg transition-all"
+                          >
+                            <MoreVertical size={18} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -824,15 +927,38 @@ const Admin: React.FC = () => {
                   </div>
 
                   {newRole !== 'citizen' && (
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-black uppercase tracking-widest text-brand-text-dim px-2">Sector Assignment</label>
-                      <DepartmentDropdown 
-                        value={newDept}
-                        onChange={setNewDept}
-                        isOpen={isDeptDropdownOpen}
-                        setIsOpen={setIsDeptDropdownOpen}
-                      />
-                    </div>
+                    <>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-brand-text-dim px-2">Sector Assignment</label>
+                        <DepartmentDropdown 
+                          value={newDept}
+                          onChange={setNewDept}
+                          isOpen={isDeptDropdownOpen}
+                          setIsOpen={setIsDeptDropdownOpen}
+                        />
+                      </div>
+
+                      <div className="space-y-3">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-brand-text-dim px-2">Access Key Generation</label>
+                        <div className="flex gap-2">
+                           <input 
+                             readOnly
+                             type="text" 
+                             placeholder="Click generate to create key..."
+                             className="flex-1 bg-white/5 border border-brand-border rounded-xl px-4 py-3 text-sm font-mono font-bold text-brand-accent focus:outline-none"
+                             value={newAccessKey}
+                           />
+                           <button 
+                             type="button"
+                             onClick={generateAccessKey}
+                             className="px-4 bg-brand-accent/10 border border-brand-accent/20 text-brand-accent rounded-xl hover:bg-brand-accent/20 transition-all shadow-sm"
+                           >
+                             <RefreshCw size={18} />
+                           </button>
+                        </div>
+                        <p className="text-[9px] text-brand-text-dim italic px-2">Staff will use this key to claim their municipal sector profile.</p>
+                      </div>
+                    </>
                   )}
                 </div>
 
@@ -852,6 +978,132 @@ const Admin: React.FC = () => {
                   </button>
                 </div>
               </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+      
+      {/* Delete Confirmation Modal */}
+      <AnimatePresence>
+        {isDeleteModalOpen && selectedUser && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-6">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsDeleteModalOpen(false)}
+              className="absolute inset-0 bg-brand-bg/80 backdrop-blur-md"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-md bg-brand-bg border border-red-500/30 rounded-[2.5rem] shadow-2xl p-10 space-y-8"
+            >
+              <div className="flex flex-col items-center text-center space-y-6">
+                <div className="w-20 h-20 bg-red-500/10 rounded-3xl flex items-center justify-center text-red-500 border border-red-500/20">
+                  <AlertTriangle size={40} />
+                </div>
+                <div className="space-y-2">
+                  <h2 className="text-2xl font-display text-brand-text-bright uppercase tracking-tight">Security Breach?</h2>
+                  <p className="text-[10px] text-brand-text-dim uppercase tracking-[0.2em] font-black italic">Identity De-Authorization Protocol</p>
+                </div>
+                <div className="bg-red-500/5 p-6 rounded-2xl border border-red-500/10 w-full">
+                  <p className="text-xs text-brand-text-bright leading-relaxed">
+                    You are about to permanently terminate access for <span className="font-black text-red-500 uppercase">{selectedUser.name}</span>. 
+                    This identity will be purged from the municipal database. This action is <span className="underline decoration-red-500 font-bold">irreversible</span>.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex gap-4">
+                <button 
+                  onClick={() => setIsDeleteModalOpen(false)}
+                  className="flex-1 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest text-brand-text-dim border border-brand-border hover:bg-white/5 transition-all"
+                >
+                  Abort
+                </button>
+                <button 
+                  onClick={confirmDelete}
+                  className="flex-1 py-4 rounded-2xl bg-red-600 text-white text-[10px] font-black uppercase tracking-widest shadow-xl shadow-red-600/20 hover:bg-red-700 transition-all font-display"
+                >
+                  Purge Identity
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Registration Status Modal */}
+      <AnimatePresence>
+        {registrationStatus.show && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-6">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setRegistrationStatus({ ...registrationStatus, show: false })}
+              className="absolute inset-0 bg-brand-bg/90 backdrop-blur-xl"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className={`relative w-full max-w-md bg-brand-bg border ${registrationStatus.success ? 'border-brand-accent/30' : 'border-red-500/30'} rounded-[2.5rem] shadow-2xl p-10 space-y-8`}
+            >
+              <div className="flex flex-col items-center text-center space-y-6">
+                <div className={`w-20 h-20 rounded-3xl flex items-center justify-center border transition-all ${
+                  registrationStatus.success 
+                    ? 'bg-brand-accent/10 text-brand-accent border-brand-accent/20' 
+                    : 'bg-red-500/10 text-red-500 border-red-500/20'
+                }`}>
+                  {registrationStatus.success ? <CheckCircle size={40} /> : <AlertTriangle size={40} />}
+                </div>
+                
+                <div className="space-y-2">
+                  <h2 className="text-2xl font-display text-brand-text-bright uppercase tracking-tight">
+                    {registrationStatus.success ? 'Process Confirmed' : 'System Restriction'}
+                  </h2>
+                  <p className="text-[10px] text-brand-text-dim uppercase tracking-[0.2em] font-black italic">
+                    Identity Management Protocol
+                  </p>
+                </div>
+
+                <div className={`w-full p-6 rounded-2xl border ${
+                  registrationStatus.success ? 'bg-brand-accent/5 border-brand-accent/10' : 'bg-red-500/5 border-red-500/10'
+                }`}>
+                  <p className="text-xs text-brand-text-bright leading-relaxed">
+                    {registrationStatus.message}
+                  </p>
+                  
+                  {registrationStatus.success && registrationStatus.email && (
+                    <div className="mt-4 pt-4 border-t border-brand-accent/10 space-y-3">
+                      <div className="flex justify-between items-center text-[9px] uppercase font-black tracking-widest text-brand-text-dim">
+                        <span>Personnel Email</span>
+                        <span className="text-brand-text-bright lowercase">{registrationStatus.email}</span>
+                      </div>
+                      {registrationStatus.key && (
+                        <div className="flex justify-between items-center bg-brand-accent/10 p-3 rounded-xl border border-brand-accent/20">
+                          <span className="text-[9px] uppercase font-black tracking-widest text-brand-accent">Access Key</span>
+                          <span className="font-mono text-sm font-bold text-brand-accent tracking-widest">{registrationStatus.key}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <button 
+                onClick={() => setRegistrationStatus({ ...registrationStatus, show: false })}
+                className={`w-full py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                  registrationStatus.success 
+                    ? 'bg-brand-accent text-white shadow-xl shadow-brand-accent/20 hover:bg-blue-900' 
+                    : 'bg-white/5 text-brand-text-dim border border-brand-border hover:bg-white/10'
+                }`}
+              >
+                Clear Terminal
+              </button>
             </motion.div>
           </div>
         )}
