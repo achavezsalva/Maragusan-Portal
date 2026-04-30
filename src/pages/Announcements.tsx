@@ -13,9 +13,12 @@ import {
   User, 
   Building,
   X,
-  Send
+  Send,
+  Flag,
+  Globe
 } from 'lucide-react';
 import { motion } from 'motion/react';
+import { MUNICIPAL_BRANDING } from '../constants';
 
 interface Announcement {
   id: string;
@@ -24,6 +27,7 @@ interface Announcement {
   department_id: string;
   author_id: string;
   created_at: any;
+  is_municipal?: boolean;
 }
 
 interface Department {
@@ -43,7 +47,10 @@ const Announcements: React.FC = () => {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [deptId, setDeptId] = useState('');
+  const [isMunicipal, setIsMunicipal] = useState(false);
   const [isEditing, setIsEditing] = useState<string | null>(null);
+
+  const canPostMunicipal = profile?.department_id && MUNICIPAL_BRANDING.newsAuthorizedDepts.includes(profile.department_id);
 
   useEffect(() => {
     // Depts listener
@@ -54,11 +61,19 @@ const Announcements: React.FC = () => {
     });
 
     // Announcements listener
-    const annQuery = query(collection(db, 'announcements'), orderBy('created_at', 'desc'));
+    const annQuery = query(collection(db, 'announcements'));
     const annUnsubscribe = onSnapshot(annQuery, (snapshot) => {
       const anns: Announcement[] = [];
       snapshot.forEach((doc) => anns.push({ id: doc.id, ...(doc.data() as any) }));
-      setAnnouncements(anns);
+      
+      // Sort client-side by date
+      const sorted = anns.sort((a, b) => {
+        const timeA = a.created_at?.toMillis?.() || (a.created_at?.seconds * 1000) || 0;
+        const timeB = b.created_at?.toMillis?.() || (b.created_at?.seconds * 1000) || 0;
+        return timeB - timeA;
+      });
+      
+      setAnnouncements(sorted);
       setLoading(false);
     });
 
@@ -78,6 +93,7 @@ const Announcements: React.FC = () => {
           title,
           content,
           department_id: deptId,
+          is_municipal: isMunicipal,
           updated_at: serverTimestamp()
         });
       } else {
@@ -86,6 +102,7 @@ const Announcements: React.FC = () => {
           content,
           department_id: deptId,
           author_id: user?.uid,
+          is_municipal: isMunicipal,
           created_at: serverTimestamp()
         });
       }
@@ -100,6 +117,7 @@ const Announcements: React.FC = () => {
     setTitle('');
     setContent('');
     setDeptId('');
+    setIsMunicipal(false);
     setIsEditing(null);
     setShowModal(false);
   };
@@ -117,7 +135,9 @@ const Announcements: React.FC = () => {
 
   const filteredAnnouncements = filterDept === 'all' 
     ? announcements 
-    : announcements.filter(a => a.department_id === filterDept);
+    : filterDept === 'municipal'
+      ? announcements.filter(a => a.is_municipal)
+      : announcements.filter(a => a.department_id === filterDept);
 
   return (
     <div className="space-y-12">
@@ -152,6 +172,17 @@ const Announcements: React.FC = () => {
         >
           All Briefings
         </button>
+        <button 
+          onClick={() => setFilterDept('municipal')}
+          className={`px-4 py-2 text-[10px] uppercase font-black tracking-[0.2em] transition-all border-b-2 ${filterDept === 'municipal' ? 'border-brand-accent text-brand-accent font-bold' : 'border-transparent text-brand-text-dim hover:text-brand-text-bright'}`}
+          role="tab"
+          aria-selected={filterDept === 'municipal'}
+        >
+          <span className="flex items-center gap-2">
+            <Globe size={12} className={filterDept === 'municipal' ? 'text-brand-accent' : ''} />
+            News & Update
+          </span>
+        </button>
         {departments.map((dept) => (
           <button 
             key={dept.id}
@@ -178,6 +209,11 @@ const Announcements: React.FC = () => {
                   <span className="inline-block px-3 py-1 border border-brand-accent text-brand-accent rounded-full text-[9px] font-black uppercase tracking-widest">
                     {departments.find(d => d.id === ann.department_id)?.name || 'General'}
                   </span>
+                  {ann.is_municipal && (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-brand-accent text-white rounded-full text-[9px] font-black uppercase tracking-widest shadow-lg shadow-brand-accent/20">
+                      <Globe size={10} /> Municipal Hub News
+                    </span>
+                  )}
                   <p className="text-[10px] text-brand-text-dim uppercase tracking-widest">
                     {ann.created_at ? (typeof ann.created_at.toDate === 'function' ? format(ann.created_at.toDate(), 'MMMM d, yyyy') : format(new Date(ann.created_at), 'MMMM d, yyyy')) : 'Recently Published'}
                   </p>
@@ -191,6 +227,7 @@ const Announcements: React.FC = () => {
                         setTitle(ann.title);
                         setContent(ann.content);
                         setDeptId(ann.department_id);
+                        setIsMunicipal(ann.is_municipal || false);
                         setShowModal(true);
                       }}
                       className="text-brand-text-dim hover:text-brand-accent transition-colors"
@@ -281,6 +318,34 @@ const Announcements: React.FC = () => {
                   ))}
                 </select>
               </div>
+
+              {canPostMunicipal && (
+                <div className="p-6 bg-brand-accent/5 border border-brand-accent/20 rounded-xl space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-brand-accent text-white rounded-lg flex items-center justify-center">
+                        <Globe size={20} />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-black uppercase tracking-widest text-brand-text-bright">Municipal Publication Hub</h4>
+                        <p className="text-[9px] text-brand-text-dim uppercase tracking-widest font-bold">Authorized Sector: {profile?.department_id}</p>
+                      </div>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        checked={isMunicipal}
+                        onChange={(e) => setIsMunicipal(e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-accent"></div>
+                    </label>
+                  </div>
+                  <p className="text-[10px] text-brand-text-dim leading-relaxed px-1">
+                    Enabling this will promote your publication to the global municipal portal news feed, making it visible to all Maragusanos on the homepage.
+                  </p>
+                </div>
+              )}
 
               <div className="space-y-2">
                 <label id="content-label" className="text-[10px] font-black uppercase tracking-widest text-brand-text-dim ml-1">Content</label>

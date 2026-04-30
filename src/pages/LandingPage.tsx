@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { 
   FileText, 
@@ -18,9 +18,15 @@ import {
   ShieldAlert,
   Leaf,
   TrendingUp,
-  GraduationCap
+  GraduationCap,
+  Megaphone,
+  Calendar,
+  ChevronRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { collection, query, where, orderBy, limit, onSnapshot } from 'firebase/firestore';
+import { db } from '../lib/firebase';
+import { format } from 'date-fns';
 
 const HERO_SLIDES = [
   '/img/slide1.jpg.jpg',
@@ -38,12 +44,47 @@ const HERO_SLIDES = [
 const LandingPage = () => {
   const navigate = useNavigate();
   const [currentSlide, setCurrentSlide] = React.useState(0);
+  const [news, setNews] = useState<any[]>([]);
+  const [loadingNews, setLoadingNews] = useState(true);
 
   React.useEffect(() => {
     const timer = setInterval(() => {
       setCurrentSlide((prev) => (prev + 1) % HERO_SLIDES.length);
     }, 5000); // Change slide every 5 seconds
     return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    const q = query(
+      collection(db, 'announcements'),
+      where('is_municipal', '==', true)
+      // Removed orderBy to avoid index requirement for new apps
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const newsItems: any[] = [];
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        newsItems.push({ id: doc.id, ...data });
+      });
+      
+      console.log(`Fetched ${newsItems.length} municipal news items`);
+
+      // Sort client-side by date
+      const sorted = newsItems.sort((a, b) => {
+        const timeA = a.created_at?.toMillis?.() || (a.created_at?.seconds * 1000) || 0;
+        const timeB = b.created_at?.toMillis?.() || (b.created_at?.seconds * 1000) || 0;
+        return timeB - timeA;
+      }).slice(0, 3);
+      
+      setNews(sorted);
+      setLoadingNews(false);
+    }, (error) => {
+      console.error("News fetch error:", error);
+      setLoadingNews(false);
+    });
+
+    return () => unsubscribe();
   }, []);
 
   return (
@@ -168,7 +209,99 @@ const LandingPage = () => {
         </div>
       </section>
 
-      {/* Stats Section */}
+      {/* Municipal News & Activities */}
+      <section className="px-6 relative overflow-hidden">
+        <div className="max-w-7xl mx-auto space-y-12">
+          <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+            <div className="space-y-4">
+              <div className="inline-flex items-center gap-2 px-3 py-1 bg-brand-accent/10 rounded-full border border-brand-accent/20 text-brand-accent text-[9px] font-black uppercase tracking-[0.2em]">
+                <Megaphone size={12} /> Live Updates
+              </div>
+              <h2 className="text-4xl md:text-6xl font-display uppercase tracking-tight leading-none">
+                Official <br />
+                <span className="italic text-brand-secondary font-light">News & Update.</span>
+              </h2>
+            </div>
+            <Link 
+              to="/announcements" 
+              className="flex items-center gap-3 text-[10px] font-black uppercase tracking-widest text-brand-text-dim hover:text-brand-accent transition-colors group"
+            >
+              See All Publication Briefings 
+              <ChevronRight size={14} className="group-hover:translate-x-1 transition-transform" />
+            </Link>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-0 border border-brand-border rounded-[2rem] overflow-hidden">
+            {loadingNews ? (
+              [1, 2, 3].map(i => (
+                <div key={i} className="h-80 bg-slate-50 border-r last:border-r-0 border-brand-border animate-pulse" />
+              ))
+            ) : news.length > 0 ? (
+              news.map((item, idx) => (
+                <motion.article 
+                  key={item.id}
+                  initial={{ opacity: 0 }}
+                  whileInView={{ opacity: 1 }}
+                  viewport={{ once: true }}
+                  transition={{ delay: idx * 0.1 }}
+                  className="group flex flex-col p-10 bg-white border-r last:border-r-0 border-brand-border hover:bg-slate-50 transition-colors cursor-pointer"
+                  onClick={() => navigate('/announcements')}
+                >
+                  <div className="flex-1 space-y-6">
+                    <div className="flex items-center justify-between">
+                      <div className="text-[10px] font-mono font-medium py-1 px-2 bg-slate-100 rounded text-brand-text-dim uppercase tracking-wider">
+                        {item.created_at ? format(item.created_at.toDate ? item.created_at.toDate() : new Date(item.created_at.seconds * 1000), 'yyyy.MM.dd') : 'RECENT_ENTRY'}
+                      </div>
+                      <div className="w-2 h-2 rounded-full bg-brand-accent animate-pulse shadow-[0_0_8px_rgba(255,107,0,0.5)]" />
+                    </div>
+                    <h3 className="text-2xl font-display tracking-tight leading-[1.1] group-hover:text-brand-accent transition-colors line-clamp-2 uppercase">
+                      {item.title}
+                    </h3>
+                    <p className="text-sm text-brand-text-dim leading-relaxed line-clamp-4 font-medium italic opacity-70">
+                      {item.content}
+                    </p>
+                  </div>
+                  <div className="pt-8 flex items-center justify-between">
+                    <span className="text-[10px] font-black uppercase tracking-[0.3em] text-brand-accent flex items-center gap-2">
+                       READ_NEWS <ArrowRight size={12} />
+                    </span>
+                  </div>
+                </motion.article>
+              ))
+            ) : (
+              <div className="col-span-3 py-32 text-center bg-slate-50">
+                <p className="text-[11px] font-mono uppercase tracking-[0.3em] text-brand-text-dim">
+                  NO ACTIVE NEWS & UPDATE AT THIS_TIME
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* Municipal Stats Section */}
+      <section className="px-6">
+        <div className="max-w-7xl mx-auto border-y border-brand-border py-20">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-12 md:gap-4 divide-x-0 md:divide-x divide-brand-border text-center">
+            <div className="space-y-2">
+              <div className="text-5xl md:text-6xl font-display text-brand-accent">24.</div>
+              <div className="text-[10px] font-black uppercase tracking-[0.2em] text-brand-text-dim">Official Departments</div>
+            </div>
+            <div className="space-y-2">
+              <div className="text-5xl md:text-6xl font-display text-brand-accent">100%</div>
+              <div className="text-[10px] font-black uppercase tracking-[0.2em] text-brand-text-dim">Data Transparency</div>
+            </div>
+            <div className="space-y-2">
+              <div className="text-5xl md:text-6xl font-display text-brand-accent">24/7.</div>
+              <div className="text-[10px] font-black uppercase tracking-[0.2em] text-brand-text-dim">Digital Access</div>
+            </div>
+            <div className="space-y-2">
+              <div className="text-5xl md:text-6xl font-display text-brand-accent">99.</div>
+              <div className="text-[10px] font-black uppercase tracking-[0.2em] text-brand-text-dim">Service Satisfaction</div>
+            </div>
+          </div>
+        </div>
+      </section>
   
 
       {/* Contact Section */}

@@ -19,5 +19,14 @@ export const MUNICIPAL_BRANDING = {
   colors: {
     primary: "#0038A8", // Royal Blue
     secondary: "#EAB308", // Municipal Gold
-  }
+  },
+  
+  // Authorized Departments for Municipal Hub Features
+  newsAuthorizedDepts: [
+    "mayor",
+    "legislative",
+    "engineering",
+    "agriculture",
+    "mswdo"
+  ]
 };

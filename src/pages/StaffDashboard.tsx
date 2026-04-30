@@ -15,13 +15,15 @@ import {
   CheckCircle,
   AlertTriangle,
   ChevronRight,
-  Plus
+  Plus,
+  Globe
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { doc, getDoc, setDoc, updateDoc, collection, query, where, onSnapshot, orderBy } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import { useAuth, UserProfile } from '../hooks/useAuth';
 import { DepartmentInfo, ALL_DEPT_DETAILS } from '../constants/departments';
+import { MUNICIPAL_BRANDING } from '../constants';
 import { Link } from 'react-router-dom';
 
 enum OperationType {
@@ -237,6 +239,11 @@ const StaffDashboard: React.FC = () => {
             <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest bg-black/10 px-4 py-2 rounded-xl backdrop-blur-sm text-white border border-white/10">
               <Shield size={14} /> Authorized Personnel Dashboard
             </div>
+            {profile?.department_id && MUNICIPAL_BRANDING.newsAuthorizedDepts.includes(profile.department_id) && (
+              <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest bg-amber-400 text-brand-bg px-4 py-2 rounded-xl shadow-lg border border-amber-300 animate-pulse">
+                <Globe size={14} /> Municipal Hub Access
+              </div>
+            )}
             {department?.head && (
               <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-widest opacity-80 italic">
                 Under the directorship of: {department.head}

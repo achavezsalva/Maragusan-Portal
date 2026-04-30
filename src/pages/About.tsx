@@ -35,7 +35,7 @@ const About = () => {
           >
             <div className="inline-flex items-center gap-2 px-4 py-2 bg-brand-secondary/20 backdrop-blur-md rounded-full border border-brand-secondary/30 text-brand-secondary text-[10px] font-black uppercase tracking-[0.2em]">
               <Mountain size={12} aria-hidden="true" />
-              The Summer Capital of Davao de Oro
+              The Summer Capital of Davao Region
             </div>
             <h1 className="text-5xl md:text-8xl font-display text-white tracking-tight leading-none uppercase">
               About <span className="italic text-brand-secondary">Maragusan.</span>
@@ -83,7 +83,7 @@ const About = () => {
               </div>
               <h2 className="text-4xl md:text-6xl font-display leading-tight tracking-tighter">
                 The Summer Capital <br />
-                <span className="italic font-light text-brand-secondary">of Davao de Oro</span>
+                <span className="italic font-light text-brand-secondary">of Davao Region</span>
               </h2>
             </div>
             <div className="space-y-6 text-brand-text-dim leading-relaxed text-lg lg:text-xl font-light">
@@ -91,7 +91,7 @@ const About = () => {
                 Nestled in the cool highlands of Davao de Oro, Maragusan is famous for its breathtaking waterfalls, lush rainforests, and thriving coffee plantations. 
               </p>
               <p>
-                Often called the <span className="text-brand-text-bright font-black italic">"Summer Capital of Davao de Oro"</span>, this picturesque town offers a refreshing retreat from the tropical heat, making it a paradise for nature lovers, adventure seekers, and eco-tourists.
+                Often called the <span className="text-brand-text-bright font-black italic">"Summer Capital of Davao Region"</span>, this picturesque town offers a refreshing retreat from the tropical heat, making it a paradise for nature lovers, adventure seekers, and eco-tourists.
               </p>
             </div>
             <div className="flex gap-10 pt-4 border-t border-brand-border">

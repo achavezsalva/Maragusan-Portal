@@ -41,7 +41,7 @@
     },
     "Announcement": {
       "title": "Announcement",
-      "description": "Government announcements",
+      "description": "Government announcements and public briefings",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
@@ -49,6 +49,7 @@
         "content": { "type": "string" },
         "department_id": { "type": "string" },
         "author_id": { "type": "string" },
+        "is_municipal": { "type": "boolean", "description": "Whether this is a public briefing for the entire municipality" },
         "created_at": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "title", "content", "department_id", "author_id", "created_at"]

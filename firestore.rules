@@ -67,7 +67,14 @@ service cloud.firestore {
              data.content is string && data.content.size() > 0 &&
              data.department_id is string &&
              data.author_id == request.auth.uid &&
-             data.created_at == request.time;
+             (data.created_at == request.time || data.created_at is timestamp) &&
+             (!data.keys().contains('is_municipal') || data.is_municipal is bool) &&
+             (!data.keys().contains('updated_at') || data.updated_at == request.time);
+    }
+    
+    function canPostMunicipal() {
+      let data = getUserData();
+      return data != null && (data.role == 'admin' || (data.role == 'staff' && data.department_id in ['mayor', 'legislative', 'engineering', 'agriculture', 'mswdo']));
     }
 
     function isValidServiceRequest(data) {
@@ -130,10 +137,12 @@ service cloud.firestore {
     match /announcements/{announcementId} {
       allow read: if true;
       allow create: if (isAdmin() || (isStaff() && getUserData().department_id == incoming().department_id)) &&
-                     isValidAnnouncement(incoming());
+                     isValidAnnouncement(incoming()) &&
+                     (!incoming().keys().contains('is_municipal') || (incoming().is_municipal == false || canPostMunicipal()));
       allow update: if (isAdmin() || (isStaff() && getUserData().department_id == existing().department_id && getUserData().department_id == incoming().department_id)) &&
                      isValidAnnouncement(incoming()) &&
-                     incoming().diff(existing()).affectedKeys().hasOnly(['title', 'content', 'department_id']);
+                     (!incoming().keys().contains('is_municipal') || (incoming().is_municipal == existing().get('is_municipal', false) || canPostMunicipal())) &&
+                     incoming().diff(existing()).affectedKeys().hasOnly(['title', 'content', 'department_id', 'is_municipal', 'updated_at']);
       allow delete: if isAdmin() || (isStaff() && getUserData().department_id == existing().department_id);
     }
 
