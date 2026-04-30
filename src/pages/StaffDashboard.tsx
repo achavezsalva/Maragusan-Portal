@@ -19,50 +19,14 @@ import {
   Globe
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { doc, getDoc, setDoc, updateDoc, collection, query, where, onSnapshot, orderBy } from 'firebase/firestore';
-import { db, auth } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
 import { useAuth, UserProfile } from '../hooks/useAuth';
 import { DepartmentInfo, ALL_DEPT_DETAILS } from '../constants/departments';
 import { MUNICIPAL_BRANDING } from '../constants';
 import { Link } from 'react-router-dom';
 
-enum OperationType {
-  CREATE = 'create',
-  UPDATE = 'update',
-  DELETE = 'delete',
-  LIST = 'list',
-  GET = 'get',
-  WRITE = 'write',
-}
-
-interface FirestoreErrorInfo {
-  error: string;
-  operationType: OperationType;
-  path: string | null;
-  authInfo: {
-    userId?: string | null;
-    email?: string | null;
-    emailVerified?: boolean | null;
-  }
-}
-
-const handleFirestoreError = (error: unknown, operationType: OperationType, path: string | null) => {
-  const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
-    authInfo: {
-      userId: auth.currentUser?.uid,
-      email: auth.currentUser?.email,
-      emailVerified: auth.currentUser?.emailVerified,
-    },
-    operationType,
-    path
-  };
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
-};
-
 const StaffDashboard: React.FC = () => {
-  const { profile, user } = useAuth();
+  const { profile, user, isStaff } = useAuth();
   const [department, setDepartment] = useState<DepartmentInfo | null>(null);
   const [sectorStaff, setSectorStaff] = useState<UserProfile[]>([]);
   const [announcements, setAnnouncements] = useState<any[]>([]);
@@ -79,99 +43,120 @@ const StaffDashboard: React.FC = () => {
 
   useEffect(() => {
     if (!sectorId || !user) {
-      setIsLoading(false);
+      if (!user) setIsLoading(false);
       return;
     }
 
-    const fetchDept = async () => {
+    const fetchData = async () => {
       try {
+        // 1. Fetch Department
         const fallbackDept = ALL_DEPT_DETAILS.find(d => d.id === sectorId || d.name === sectorId);
         const targetId = fallbackDept?.id || sectorId;
 
-        if (fallbackDept && sectorId === fallbackDept.name && user) {
-          await updateDoc(doc(db, 'users', user.uid), {
-            department_id: fallbackDept.id
-          });
+        if (fallbackDept && sectorId === fallbackDept.name) {
+          await supabase
+            .from('users')
+            .update({ department_id: fallbackDept.id })
+            .eq('id', user.id);
         }
 
-        const docRef = doc(db, 'departments', targetId);
-        const docSnap = await getDoc(docRef);
-        
-        if (docSnap.exists()) {
-          const data = docSnap.data() as DepartmentInfo;
-          setDepartment(data);
-          setEditForm(data);
+        const { data: deptData } = await supabase
+          .from('departments')
+          .select('*')
+          .eq('id', targetId)
+          .single();
+
+        if (deptData) {
+          setDepartment(deptData);
+          setEditForm(deptData);
         } else if (fallbackDept) {
           setDepartment(fallbackDept);
           setEditForm(fallbackDept);
         }
 
-        return targetId;
+        // 2. Fetch Staff
+        const { data: staffData } = await supabase
+          .from('users')
+          .select('*')
+          .eq('department_id', targetId)
+          .order('name', { ascending: true });
+        
+        setSectorStaff((staffData || []).filter(u => !u.id.startsWith('pre_auth:')));
+
+        // 3. Fetch Announcements
+        const { data: annData } = await supabase
+          .from('announcements')
+          .select('*')
+          .eq('department_id', targetId)
+          .order('created_at', { ascending: false })
+          .limit(5);
+        
+        setAnnouncements(annData || []);
+        setIsLoading(false);
       } catch (err) {
-        console.error("Error fetching department:", err);
-        return sectorId;
+        console.error("Dashboard data fetch error:", err);
+        setIsLoading(false);
       }
     };
 
-    let unsubStaff: (() => void) | null = null;
-    let unsubAnn: (() => void) | null = null;
+    fetchData();
 
-    fetchDept().then((targetId) => {
-      // Re-verify user after async fetch
-      if (!targetId || !auth.currentUser) return;
+    // Set up real-time subscriptions
+    const usersChannel = supabase
+      .channel('staff-users-changes')
+      .on('postgres_changes', { 
+        event: '*', 
+        schema: 'public', 
+        table: 'users',
+        filter: `department_id=eq.${sectorId}`
+      }, () => {
+        fetchData();
+      })
+      .subscribe();
 
-      const staffQuery = query(
-        collection(db, 'users'), 
-        where('department_id', '==', targetId),
-        orderBy('name', 'asc')
-      );
-      unsubStaff = onSnapshot(staffQuery, (snapshot) => {
-        const list: UserProfile[] = [];
-        snapshot.forEach(doc => {
-          const data = doc.data() as UserProfile;
-          if (!doc.id.startsWith('pre_auth:')) {
-            list.push(data);
-          }
-        });
-        setSectorStaff(list);
-      }, (error) => {
-        // Only log if we expect to be logged in
-        if (auth.currentUser) {
-          handleFirestoreError(error, OperationType.LIST, 'users');
-        }
-      });
+    const deptsChannel = supabase
+      .channel('staff-depts-changes')
+      .on('postgres_changes', { 
+        event: '*', 
+        schema: 'public', 
+        table: 'departments',
+        filter: `id=eq.${sectorId}`
+      }, () => {
+        fetchData();
+      })
+      .subscribe();
 
-      const annQuery = query(
-        collection(db, 'announcements'),
-        where('department_id', '==', targetId),
-        orderBy('created_at', 'desc')
-      );
-      unsubAnn = onSnapshot(annQuery, (snapshot) => {
-        const list: any[] = [];
-        snapshot.forEach(doc => list.push({ id: doc.id, ...doc.data() }));
-        setAnnouncements(list.slice(0, 5));
-        setIsLoading(false);
-      }, (error) => {
-        if (auth.currentUser) {
-          handleFirestoreError(error, OperationType.LIST, 'announcements');
-        }
-      });
-    });
+    const annChannel = supabase
+      .channel('staff-ann-changes')
+      .on('postgres_changes', { 
+        event: '*', 
+        schema: 'public', 
+        table: 'announcements',
+        filter: `department_id=eq.${sectorId}`
+      }, () => {
+        fetchData();
+      })
+      .subscribe();
 
     return () => {
-      if (unsubStaff) unsubStaff();
-      if (unsubAnn) unsubAnn();
+      supabase.removeChannel(usersChannel);
+      supabase.removeChannel(deptsChannel);
+      supabase.removeChannel(annChannel);
     };
-  }, [sectorId, user?.uid]);
+  }, [sectorId, user?.id]);
 
   const handleUpdateSector = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editForm || !sectorId) return;
 
     try {
-      // Use the actual ID from the form/constant if possible, otherwise sectorId
       const targetId = department?.id || sectorId;
-      await setDoc(doc(db, 'departments', targetId), { ...editForm });
+      const { error } = await supabase
+        .from('departments')
+        .upsert(editForm);
+
+      if (error) throw error;
+
       setDepartment(editForm);
       setIsEditingProfile(false);
       setSaveStatus({
@@ -199,17 +184,39 @@ const StaffDashboard: React.FC = () => {
     );
   }
 
+  if (!isStaff) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 space-y-6 text-center">
+        <div className="w-20 h-20 bg-slate-50 rounded-3xl flex items-center justify-center text-brand-text-dim border border-slate-100">
+          <Shield size={40} />
+        </div>
+        <div className="space-y-2">
+          <h1 className="text-2xl font-display uppercase tracking-tight text-brand-text-bright">
+            Sector Clearance Required
+          </h1>
+          <p className="text-brand-text-dim max-w-sm mx-auto uppercase tracking-widest text-[10px] font-black leading-relaxed text-center">
+            Staff level clearance and identity verification (Is Claimed) are required to access sector management tools.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   if (!sectorId) {
     return (
       <div className="flex flex-col items-center justify-center py-20 space-y-6 text-center">
-        <Shield size={64} className="text-brand-text-dim/30" />
-        <h1 className="text-2xl font-display uppercase tracking-tight text-brand-text-bright">
-          Awaiting Assignment
-        </h1>
-        <p className="text-brand-text-dim max-w-sm uppercase tracking-widest text-xs font-black leading-relaxed">
-          Your identity profile has not yet been assigned to a municipal sector. 
-          Please contact the chief administrator for clearance protocols.
-        </p>
+        <div className="w-20 h-20 bg-slate-50 rounded-3xl flex items-center justify-center text-brand-text-dim border border-slate-100">
+          <Users size={40} />
+        </div>
+        <div className="space-y-2">
+          <h1 className="text-2xl font-display uppercase tracking-tight text-brand-text-bright">
+            Awaiting Assignment
+          </h1>
+          <p className="text-brand-text-dim max-w-sm mx-auto uppercase tracking-widest text-[10px] font-black leading-relaxed text-center">
+            Your identity profile has not yet been assigned to a municipal sector. 
+            Please contact the chief administrator for clearance protocols.
+          </p>
+        </div>
       </div>
     );
   }
@@ -368,9 +375,9 @@ const StaffDashboard: React.FC = () => {
 
               <div className="space-y-3 flex-1 overflow-y-auto max-h-[400px] pr-2 custom-scrollbar">
                 {sectorStaff.map((staffMember) => (
-                  <div key={staffMember.uid} className="p-4 bg-white/5 border border-brand-border rounded-2xl flex items-center gap-4 group hover:bg-white/10 transition-all">
+                  <div key={staffMember.id} className="p-4 bg-white/5 border border-brand-border rounded-2xl flex items-center gap-4 group hover:bg-white/10 transition-all">
                     <div className="w-10 h-10 rounded-xl bg-brand-bg border border-brand-border flex items-center justify-center text-brand-accent font-display text-lg">
-                      {staffMember.name[0]}
+                      {staffMember.name?.[0] || '?'}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="text-xs font-bold text-brand-text-bright truncate">{staffMember.name}</div>

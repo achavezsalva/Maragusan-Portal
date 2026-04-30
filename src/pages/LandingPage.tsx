@@ -24,8 +24,7 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { collection, query, where, orderBy, limit, onSnapshot } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
 import { format } from 'date-fns';
 
 const HERO_SLIDES = [
@@ -55,36 +54,43 @@ const LandingPage = () => {
   }, []);
 
   useEffect(() => {
-    const q = query(
-      collection(db, 'announcements'),
-      where('is_municipal', '==', true)
-      // Removed orderBy to avoid index requirement for new apps
-    );
+    const fetchNews = async () => {
+      setLoadingNews(true);
+      try {
+        const { data, error } = await supabase
+          .from('announcements')
+          .select('*')
+          .eq('is_municipal', true)
+          .order('created_at', { ascending: false })
+          .limit(3);
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const newsItems: any[] = [];
-      snapshot.forEach(doc => {
-        const data = doc.data();
-        newsItems.push({ id: doc.id, ...data });
-      });
-      
-      console.log(`Fetched ${newsItems.length} municipal news items`);
+        if (error) throw error;
+        setNews(data || []);
+      } catch (error) {
+        console.error("News fetch error:", error);
+      } finally {
+        setLoadingNews(false);
+      }
+    };
 
-      // Sort client-side by date
-      const sorted = newsItems.sort((a, b) => {
-        const timeA = a.created_at?.toMillis?.() || (a.created_at?.seconds * 1000) || 0;
-        const timeB = b.created_at?.toMillis?.() || (b.created_at?.seconds * 1000) || 0;
-        return timeB - timeA;
-      }).slice(0, 3);
-      
-      setNews(sorted);
-      setLoadingNews(false);
-    }, (error) => {
-      console.error("News fetch error:", error);
-      setLoadingNews(false);
-    });
+    fetchNews();
 
-    return () => unsubscribe();
+    // Set up real-time subscription
+    const channel = supabase
+      .channel('announcements-news')
+      .on('postgres_changes', { 
+        event: '*', 
+        schema: 'public', 
+        table: 'announcements', 
+        filter: 'is_municipal=eq.true' 
+      }, () => {
+        fetchNews();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   return (
@@ -250,7 +256,7 @@ const LandingPage = () => {
                   <div className="flex-1 space-y-6">
                     <div className="flex items-center justify-between">
                       <div className="text-[10px] font-mono font-medium py-1 px-2 bg-slate-100 rounded text-brand-text-dim uppercase tracking-wider">
-                        {item.created_at ? format(item.created_at.toDate ? item.created_at.toDate() : new Date(item.created_at.seconds * 1000), 'yyyy.MM.dd') : 'RECENT_ENTRY'}
+                        {item.created_at ? format(new Date(item.created_at), 'yyyy.MM.dd') : 'RECENT_ENTRY'}
                       </div>
                       <div className="w-2 h-2 rounded-full bg-brand-accent animate-pulse shadow-[0_0_8px_rgba(255,107,0,0.5)]" />
                     </div>

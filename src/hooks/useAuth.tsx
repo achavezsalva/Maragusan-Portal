@@ -1,10 +1,9 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { User as FirebaseUser, onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
-import { auth, db } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
+import { User } from '@supabase/supabase-js';
 
 export interface UserProfile {
-  uid: string;
+  id: string;
   name: string;
   email: string;
   role: 'admin' | 'staff' | 'citizen';
@@ -15,7 +14,7 @@ export interface UserProfile {
 }
 
 interface AuthContextType {
-  user: FirebaseUser | null;
+  user: User | null;
   profile: UserProfile | null;
   loading: boolean;
   isAdmin: boolean;
@@ -35,16 +34,28 @@ const AuthContext = createContext<AuthContextType>({
 });
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<FirebaseUser | null>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [needsVerification, setNeedsVerification] = useState(false);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      setUser(currentUser || null);
+    // Get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      if (session?.user) {
+        fetchProfile(session.user.id, session.user.email ?? '');
+      } else {
+        setLoading(false);
+      }
+    });
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      const currentUser = session?.user ?? null;
+      setUser(currentUser);
       if (currentUser) {
-        await fetchProfile(currentUser.uid, currentUser.email || '');
+        fetchProfile(currentUser.id, currentUser.email ?? '');
       } else {
         setProfile(null);
         setNeedsVerification(false);
@@ -52,66 +63,101 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     });
 
-    return () => unsubscribe();
+    return () => subscription.unsubscribe();
   }, []);
 
-  const fetchProfile = async (uid: string, email: string) => {
-    if (!email) {
-      console.warn("FetchProfile: No email provided for UID", uid);
-    }
-
+  const fetchProfile = async (id: string, email: string) => {
     try {
       setLoading(true);
-      const docRef = doc(db, 'users', uid);
-      const docSnap = await getDoc(docRef);
       const normalizedEmail = email.toLowerCase().trim();
 
-      // Check for pre-authorization record regardless of whether a UID doc exists
-      // This allows existing citizens to be "upgraded" to staff/admin via email authorization
-      const preAuthId = `pre_auth:${normalizedEmail}`;
-      const preAuthRef = doc(db, 'users', preAuthId);
-      const preAuthSnap = await getDoc(preAuthRef);
+      // 1. Check if there's a profile with the user's permanent UID
+      let { data: profileById, error: idError } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', id)
+        .single();
 
-      if (preAuthSnap.exists()) {
-        const preAuthData = preAuthSnap.data() as UserProfile;
-        
-        // If they have a regular profile, but a pre_auth exists, they need to verify to upgrade
-        // or if they don't have a profile yet, they definitely need to verify
-        setProfile(preAuthData);
-        setNeedsVerification(true);
-        setLoading(false);
-        return;
+      if (idError && idError.code !== 'PGRST116') {
+        console.error("Error fetching profile by ID:", idError);
       }
 
-      if (docSnap.exists()) {
-        const data = docSnap.data() as UserProfile;
-        
-        // Auto-upgrade admin if email matches
-        if (normalizedEmail === 'achavezsalva@gmail.com' && data.role !== 'admin') {
-          await updateDoc(docRef, { role: 'admin' });
-          setProfile({ ...data, role: 'admin' });
+      // 2. If no profile by UID, check if there's a pending profile with this email
+      // This handles pre-registered staff/admins
+      let { data: profileByEmail, error: emailError } = await supabase
+        .from('users')
+        .select('*')
+        .eq('email', normalizedEmail)
+        .single();
+
+      if (emailError && emailError.code !== 'PGRST116') {
+        console.error("Error fetching profile by email:", emailError);
+      }
+
+      // Logic Decision Table:
+      // A. Profile exists with current UID -> Use it.
+      // B. No profile with UID, but profile with Email exists and is NOT claimed -> Verification required.
+      // C. No profile with UID, but profile with Email exists and IS claimed -> This is a conflict (UID changed?), 
+      //    but since email is unique, we should probably link the new UID to this profile.
+      // D. No profile found at all -> Create new citizen.
+
+      if (profileById) {
+        setProfile(profileById as UserProfile);
+        // If a profile exists with this UID but is not claimed (shouldn't happen with auth uid but good to check), require verification
+        setNeedsVerification(profileById.is_claimed === false);
+      } else if (profileByEmail) {
+        if (!profileByEmail.is_claimed) {
+          // Pre-registered user found!
+          setProfile(profileByEmail as UserProfile);
+          setNeedsVerification(true);
         } else {
-          setProfile(data);
+          // Profile exists and is claimed, but has a different ID.
+          // Link this record to the new UID
+          const { data: updatedProfile } = await supabase
+            .from('users')
+            .update({ id })
+            .eq('email', normalizedEmail)
+            .select()
+            .single();
+          
+          setProfile(updatedProfile as UserProfile);
+          setNeedsVerification(false);
         }
-        setNeedsVerification(false);
       } else {
-        // New user profile creation (normal citizen)
+        // Create new profile
         const role = normalizedEmail === 'achavezsalva@gmail.com' ? 'admin' : 'citizen';
-        const newProfile: UserProfile = {
-          uid,
-          name: auth.currentUser?.displayName || 'Anonymous Citizen',
+        const defaultName = role === 'admin' ? 'System Administrator' : (user?.user_metadata?.full_name || 'Anonymous Citizen');
+        const newProfile: Partial<UserProfile> = {
+          id,
+          name: defaultName,
           email: normalizedEmail,
           role,
-          created_at: new Date().toISOString(),
-          is_claimed: true // Default profiles for non-pre-auth users are claimed by definition
+          is_claimed: true
         };
 
-        await setDoc(docRef, newProfile);
-        setProfile(newProfile);
-        setNeedsVerification(false);
+        const { data: createdProfile, error: createError } = await supabase
+          .from('users')
+          .insert(newProfile)
+          .select()
+          .single();
+
+        if (createError) {
+          if (createError.code === '23505') { 
+            // Email already exists! This is a pre-registered user that RLS prevents us from seeing.
+            setNeedsVerification(true);
+            setProfile({ email: normalizedEmail, role: 'staff', name: user?.user_metadata?.full_name || 'Staff' } as UserProfile);
+          } else {
+            console.error("Error creating profile:", createError);
+            setProfile({ ...newProfile, id, created_at: new Date().toISOString() } as UserProfile);
+            setNeedsVerification(false);
+          }
+        } else {
+          setProfile(createdProfile as UserProfile);
+          setNeedsVerification(false);
+        }
       }
     } catch (error) {
-      console.error("Error fetching user profile:", error);
+      console.error("Auth initialization failure:", error);
     } finally {
       setLoading(false);
     }
@@ -121,8 +167,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     user,
     profile,
     loading,
-    isAdmin: profile?.role === 'admin' || user?.email === 'achavezsalva@gmail.com',
-    isStaff: profile?.role === 'staff' || profile?.role === 'admin' || user?.email === 'achavezsalva@gmail.com',
+    isAdmin: (profile?.role === 'admin' && profile?.is_claimed) || user?.email?.toLowerCase() === 'achavezsalva@gmail.com',
+    isStaff: ((profile?.role === 'staff' || profile?.role === 'admin') && profile?.is_claimed) || user?.email?.toLowerCase() === 'achavezsalva@gmail.com',
     isCitizen: profile?.role === 'citizen',
     needsVerification,
   };

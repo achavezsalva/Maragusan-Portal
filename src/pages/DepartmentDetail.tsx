@@ -11,8 +11,7 @@ import {
   Building
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { doc, onSnapshot, setDoc } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
 import { ALL_DEPT_DETAILS, DepartmentInfo } from '../constants/departments';
 import { Save, X, Edit2, RefreshCw } from 'lucide-react';
@@ -32,28 +31,52 @@ const DepartmentDetail: React.FC = () => {
   useEffect(() => {
     if (!deptId) return;
 
-    const docRef = doc(db, 'departments', deptId);
-    const unsubscribe = onSnapshot(docRef, (docSnap) => {
-      if (docSnap.exists()) {
-        setDepartment(docSnap.data() as DepartmentInfo);
+    const fetchDept = async () => {
+      const { data } = await supabase
+        .from('departments')
+        .select('*')
+        .eq('id', deptId)
+        .single();
+
+      if (data) {
+        setDepartment(data);
       } else {
-        // Fallback to static data if not in Firestore (during migration/init)
         const staticDept = ALL_DEPT_DETAILS.find(d => d.id === deptId);
         if (staticDept) {
           setDepartment(staticDept);
         }
       }
       setLoading(false);
-    });
+    };
 
-    return () => unsubscribe();
+    fetchDept();
+
+    const channel = supabase
+      .channel(`dept-${deptId}-changes`)
+      .on('postgres_changes', { 
+        event: '*', 
+        schema: 'public', 
+        table: 'departments',
+        filter: `id=eq.${deptId}`
+      }, () => {
+        fetchDept();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [deptId]);
 
   const handleSaveDept = async () => {
     if (!deptForm || !deptId) return;
     setIsSaving(true);
     try {
-      await setDoc(doc(db, 'departments', deptId), deptForm);
+      const { error } = await supabase
+        .from('departments')
+        .upsert(deptForm);
+
+      if (error) throw error;
       setIsEditModalOpen(false);
     } catch (error) {
       console.error("Error saving department:", error);

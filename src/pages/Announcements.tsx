@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { collection, onSnapshot, query, addDoc, updateDoc, deleteDoc, doc, orderBy, serverTimestamp } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
 import { format } from 'date-fns';
 import { 
@@ -53,33 +52,41 @@ const Announcements: React.FC = () => {
   const canPostMunicipal = profile?.department_id && MUNICIPAL_BRANDING.newsAuthorizedDepts.includes(profile.department_id);
 
   useEffect(() => {
-    // Depts listener
-    const deptsUnsubscribe = onSnapshot(collection(db, 'departments'), (snapshot) => {
-      const depts: Department[] = [];
-      snapshot.forEach((doc) => depts.push({ id: doc.id, ...(doc.data() as any) }));
-      setDepartments(depts);
-    });
+    const fetchDepts = async () => {
+      const { data } = await supabase.from('departments').select('*');
+      setDepartments(data || []);
+    };
 
-    // Announcements listener
-    const annQuery = query(collection(db, 'announcements'));
-    const annUnsubscribe = onSnapshot(annQuery, (snapshot) => {
-      const anns: Announcement[] = [];
-      snapshot.forEach((doc) => anns.push({ id: doc.id, ...(doc.data() as any) }));
-      
-      // Sort client-side by date
-      const sorted = anns.sort((a, b) => {
-        const timeA = a.created_at?.toMillis?.() || (a.created_at?.seconds * 1000) || 0;
-        const timeB = b.created_at?.toMillis?.() || (b.created_at?.seconds * 1000) || 0;
-        return timeB - timeA;
-      });
-      
-      setAnnouncements(sorted);
+    const fetchAnnouncements = async () => {
+      const { data } = await supabase
+        .from('announcements')
+        .select('*')
+        .order('created_at', { ascending: false });
+      setAnnouncements(data || []);
       setLoading(false);
-    });
+    };
+
+    fetchDepts();
+    fetchAnnouncements();
+
+    // Set up real-time subscriptions
+    const announcementsChannel = supabase
+      .channel('announcements-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'announcements' }, () => {
+        fetchAnnouncements();
+      })
+      .subscribe();
+
+    const departmentsChannel = supabase
+      .channel('departments-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'departments' }, () => {
+        fetchDepts();
+      })
+      .subscribe();
 
     return () => {
-      deptsUnsubscribe();
-      annUnsubscribe();
+      supabase.removeChannel(announcementsChannel);
+      supabase.removeChannel(departmentsChannel);
     };
   }, []);
 
@@ -89,22 +96,25 @@ const Announcements: React.FC = () => {
 
     try {
       if (isEditing) {
-        await updateDoc(doc(db, 'announcements', isEditing), {
-          title,
-          content,
-          department_id: deptId,
-          is_municipal: isMunicipal,
-          updated_at: serverTimestamp()
-        });
+        await supabase
+          .from('announcements')
+          .update({
+            title,
+            content,
+            department_id: deptId,
+            is_municipal: isMunicipal,
+          })
+          .eq('id', isEditing);
       } else {
-        await addDoc(collection(db, 'announcements'), {
-          title,
-          content,
-          department_id: deptId,
-          author_id: user?.uid,
-          is_municipal: isMunicipal,
-          created_at: serverTimestamp()
-        });
+        await supabase
+          .from('announcements')
+          .insert({
+            title,
+            content,
+            department_id: deptId,
+            author_id: user?.id,
+            is_municipal: isMunicipal,
+          });
       }
       resetForm();
     } catch (err) {
@@ -125,7 +135,7 @@ const Announcements: React.FC = () => {
   const handleDelete = async (id: string) => {
     if (window.confirm('Are you sure you want to delete this announcement?')) {
       try {
-        await deleteDoc(doc(db, 'announcements', id));
+        await supabase.from('announcements').delete().eq('id', id);
       } catch (error) {
         console.error("Delete Error:", error);
         alert("Failed to delete announcement.");
@@ -215,7 +225,7 @@ const Announcements: React.FC = () => {
                     </span>
                   )}
                   <p className="text-[10px] text-brand-text-dim uppercase tracking-widest">
-                    {ann.created_at ? (typeof ann.created_at.toDate === 'function' ? format(ann.created_at.toDate(), 'MMMM d, yyyy') : format(new Date(ann.created_at), 'MMMM d, yyyy')) : 'Recently Published'}
+                    {ann.created_at ? format(new Date(ann.created_at), 'MMMM d, yyyy') : 'Recently Published'}
                   </p>
                 </div>
  

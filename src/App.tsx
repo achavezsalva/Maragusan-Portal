@@ -1,13 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './hooks/useAuth';
-import { signOut } from 'firebase/auth';
-import { auth } from './lib/firebase';
+import { supabase } from './lib/supabase';
 import { LogOut, Home, Menu, User, Bell, FileText, MessageSquare, LayoutDashboard, Shield, Building, ChevronDown, LayoutGrid, AlertTriangle, Key, CheckCircle, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { MUNICIPAL_BRANDING } from './constants';
-import { doc, getDoc, setDoc, deleteDoc, writeBatch } from 'firebase/firestore';
-import { db } from './lib/firebase';
 
 // Pages
 import LandingPage from './pages/LandingPage';
@@ -104,7 +101,7 @@ const NavItem: React.FC<NavItemProps> = ({ label, to, dropdown }) => {
 };
 
 const Layout = ({ children }: { children: React.ReactNode }) => {
-  const { user, profile, isAdmin, needsVerification } = useAuth();
+  const { user, profile, isAdmin, loading, needsVerification } = useAuth();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [openSubMenu, setOpenSubMenu] = useState<number | null>(null);
@@ -123,7 +120,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
       setIsLogoutModalOpen(false);
       setIsProfileOpen(false);
       setIsMenuOpen(false);
-      await signOut(auth);
+      await supabase.auth.signOut();
       navigate('/');
     } catch (error) {
       console.error("Logout error:", error);
@@ -143,36 +140,29 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
     setVerificationError('');
 
     try {
-      if (profile.access_key === accessKeyInput.trim()) {
-        // Key matches! Link profile to actual UID and mark as claimed
-        const batch = writeBatch(db);
-        const normalizedEmail = user.email?.toLowerCase().trim();
-        const preAuthId = `pre_auth:${normalizedEmail}`;
+      if (profile?.access_key === accessKeyInput.trim()) {
+        // ... (existing update logic)
+        const { error: updateError } = await supabase
+          .from('users')
+          .update({
+            id: user.id,
+            is_claimed: true,
+            access_key: null
+          })
+          .eq('email', profile.email);
         
-        // 1. Create the permanent user profile with real UID
-        const newUserProfile = {
-          ...profile,
-          uid: user.uid,
-          is_claimed: true,
-          access_key: null // Remove key after claim
-        };
-        batch.set(doc(db, 'users', user.uid), newUserProfile);
+        if (updateError) throw updateError;
         
-        // 2. Delete the pre-auth record
-        batch.delete(doc(db, 'users', preAuthId));
-        
-        await batch.commit();
-        
-        // Show success before reload
         setIsVerifying(false);
         setVerificationSuccess(true);
-        
-        // Auto-reload after 3 seconds to let them see the success message
-        setTimeout(() => {
-          window.location.reload();
-        }, 3000);
+        setTimeout(() => { window.location.reload(); }, 3000);
       } else {
-        setVerificationError('Invalid access key. Verification failed. Please check the key provided by your administrator.');
+        // Advanced diagnostic: if profile is missing access_key in state, it's likely RLS
+        if (!profile?.access_key) {
+          setVerificationError('System synchronization error. Your identity record is restricted. Please inform the administrator to verify SQL RLS policies.');
+        } else {
+          setVerificationError('Invalid Access Key. Access denied by administrative protocol.');
+        }
       }
     } catch (error) {
       console.error("Verification error:", error);
@@ -255,6 +245,23 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
     },
   ];
 
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-brand-bg flex items-center justify-center">
+        <div className="flex flex-col items-center gap-6">
+          <div className="relative w-20 h-20">
+            <div className="absolute inset-0 border-4 border-brand-accent/20 rounded-full"></div>
+            <div className="absolute inset-0 border-4 border-t-brand-accent rounded-full animate-spin"></div>
+          </div>
+          <div className="flex flex-col items-center">
+            <span className="text-[10px] font-black uppercase tracking-[0.4em] text-brand-text-dim animate-pulse">Synchronizing Terminal</span>
+            <span className="text-[8px] text-brand-text-dim/50 uppercase tracking-widest mt-2">Identity Verification Protocol active</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-brand-bg text-brand-text-bright font-sans antialiased flex flex-col">
@@ -555,92 +562,110 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
       {/* Identity Verification Overlay */}
       <AnimatePresence>
         {needsVerification && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 backdrop-blur-xl bg-brand-bg/90">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-brand-bg/95 backdrop-blur-2xl">
             <motion.div 
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
-              className={`relative w-full max-w-md bg-brand-bg border ${verificationSuccess ? 'border-brand-accent/50' : 'border-brand-accent/30'} rounded-[2.5rem] shadow-2xl p-10 space-y-8 transition-all duration-500`}
+              className={`relative w-full max-w-lg bg-brand-card border-2 ${verificationSuccess ? 'border-brand-accent/50' : 'border-brand-accent/20'} rounded-[3rem] shadow-[0_0_100px_rgba(30,58,138,0.2)] p-12 space-y-10 transition-all duration-500 overflow-hidden`}
             >
+              {/* Decorative background element */}
+              <div className="absolute -top-24 -right-24 w-48 h-48 bg-brand-accent/5 rounded-full blur-3xl" />
+              <div className="absolute -bottom-24 -left-24 w-48 h-48 bg-brand-accent/5 rounded-full blur-3xl" />
+
               {verificationSuccess ? (
-                <div className="flex flex-col items-center text-center space-y-8 py-4">
+                <div className="flex flex-col items-center text-center space-y-8 py-6 relative z-10">
                   <motion.div 
-                    initial={{ scale: 0 }}
-                    animate={{ scale: 1 }}
-                    transition={{ type: 'spring', damping: 10, stiffness: 100 }}
-                    className="w-24 h-24 bg-brand-accent/20 rounded-full flex items-center justify-center text-brand-accent border-2 border-brand-accent shadow-2xl shadow-brand-accent/40"
+                    initial={{ scale: 0, rotate: -45 }}
+                    animate={{ scale: 1, rotate: 0 }}
+                    transition={{ type: 'spring', damping: 12, stiffness: 200 }}
+                    className="w-32 h-32 bg-brand-accent/10 rounded-full flex items-center justify-center text-brand-accent border-4 border-brand-accent/30 shadow-[0_0_40px_rgba(30,58,138,0.3)]"
                   >
-                    <CheckCircle size={56} />
+                    <CheckCircle size={64} />
                   </motion.div>
                   
-                  <div className="space-y-3">
-                    <h2 className="text-3xl font-display text-brand-text-bright uppercase tracking-tight">Identity Claimed</h2>
-                    <p className="text-[10px] text-brand-text-dim uppercase tracking-[0.2em] font-black italic">Clearance Level: {profile?.role}</p>
+                  <div className="space-y-4">
+                    <h2 className="text-4xl font-display text-brand-text-bright uppercase tracking-tight">Identity Secured</h2>
+                    <p className="text-[11px] text-brand-accent uppercase tracking-[0.3em] font-black italic">Enrollment Successful</p>
                   </div>
 
-                  <div className="bg-brand-accent/5 p-6 rounded-2xl border border-brand-accent/10 w-full">
-                    <p className="text-xs text-brand-text-bright leading-relaxed">
-                      Identity synchronization with municipal registers is complete.<br/>
-                      <span className="font-bold text-brand-accent">Welcome to the administration, {profile?.name}.</span>
+                  <div className="bg-white/5 p-8 rounded-3xl border border-white/10 w-full">
+                    <p className="text-sm text-brand-text-bright leading-relaxed">
+                      Your administrative profile is now active.<br/>
+                      <span className="font-bold text-brand-accent">Welcome to the municipal workforce, {profile?.name}.</span>
                     </p>
                   </div>
 
                   <div className="space-y-4 w-full">
                     <div className="flex items-center justify-center gap-3 text-[10px] font-black uppercase tracking-widest text-brand-text-dim">
-                      <RefreshCw size={12} className="animate-spin" />
-                      Initializing Portal Environment...
+                      <RefreshCw size={14} className="animate-spin text-brand-accent" />
+                      Synchronizing Workspace...
                     </div>
-                    <button 
-                      onClick={() => window.location.reload()}
-                      className="w-full py-4 rounded-2xl bg-brand-accent text-white text-[10px] font-black uppercase tracking-widest shadow-xl shadow-brand-accent/20 hover:bg-blue-900 transition-all font-display"
-                    >
-                      Enter Portal Now
-                    </button>
                   </div>
                 </div>
               ) : (
                 <>
-                  <div className="flex flex-col items-center text-center space-y-6">
-                    <div className="w-20 h-20 bg-brand-accent/10 rounded-3xl flex items-center justify-center text-brand-accent border border-brand-accent/20">
-                      <Key size={40} />
+                  <div className="flex flex-col items-center text-center space-y-8 relative z-10">
+                    <div className="w-24 h-24 bg-brand-accent/10 rounded-[2rem] flex items-center justify-center text-brand-accent border-2 border-brand-accent/20 shadow-xl rotate-3 transform transition-transform hover:rotate-0">
+                      <Shield size={48} />
                     </div>
-                    <div className="space-y-2">
-                      <h2 className="text-2xl font-display text-brand-text-bright uppercase tracking-tight">Identity Validation</h2>
-                      <p className="text-[10px] text-brand-text-dim uppercase tracking-[0.2em] font-black italic">Claim Administrative Sector Profile</p>
+                    <div className="space-y-4">
+                      <h2 className="text-3xl font-display text-brand-text-bright uppercase tracking-tight leading-none italic">Clearance Check</h2>
+                      <p className="text-[10px] text-brand-text-dim uppercase tracking-[0.4em] font-black">Identity Verification Protocol</p>
                     </div>
-                    <div className="bg-brand-accent/5 p-6 rounded-2xl border border-brand-accent/10 w-full text-center">
+                    
+                    <div className="bg-brand-accent/5 p-8 rounded-3xl border border-brand-accent/10 w-full text-center space-y-3">
                       <p className="text-xs text-brand-text-bright leading-relaxed">
-                        Welcome, <span className="font-black text-brand-accent uppercase">{profile?.name}</span>. 
-                        An administrator has pre-authorized your clearance for the <span className="font-black uppercase">{profile?.department_id}</span>.
-                        Please enter your <span className="font-bold">Access Key</span> to finalize enrollment.
+                        An administrative account for <span className="text-brand-accent font-black uppercase">{profile?.email}</span> was found.
+                      </p>
+                      <p className="text-[10px] text-brand-text-dim uppercase tracking-widest leading-relaxed font-bold">
+                        Please enter your unique ACCESS KEY to claim this profile and gain sector-specific clearance.
                       </p>
                     </div>
                   </div>
 
-                  <form onSubmit={handleVerifyKey} className="space-y-6">
-                    <div className="space-y-2">
+                  <form onSubmit={handleVerifyKey} className="space-y-8 relative z-10">
+                    <div className="space-y-3">
                       <div className="relative">
+                        <div className="absolute left-6 top-1/2 -translate-y-1/2 text-brand-accent/50">
+                          <Key size={18} />
+                        </div>
                         <input 
                           required
-                          type="password"
-                          placeholder="ENTER ACCESS KEY"
-                          className="w-full bg-white/5 border border-brand-border rounded-2xl px-6 py-4 text-center text-sm font-mono tracking-[0.5em] font-bold text-brand-text-bright focus:border-brand-accent outline-none"
+                          type="text"
+                          placeholder="ACCESS-KEY-XXXX"
+                          className="w-full bg-white/5 border-2 border-white/10 rounded-2xl pl-14 pr-6 py-5 text-center text-lg font-mono tracking-[0.3em] font-black text-brand-text-bright focus:border-brand-accent focus:bg-brand-accent/5 outline-none transition-all placeholder:text-white/10"
                           value={accessKeyInput}
                           onChange={(e) => setAccessKeyInput(e.target.value.toUpperCase())}
+                          autoFocus
                         />
                       </div>
                       {verificationError && (
-                        <p className="text-[10px] text-red-500 font-black uppercase tracking-widest text-center mt-2 flex items-center justify-center gap-2">
-                          <AlertTriangle size={12} /> {verificationError}
-                        </p>
+                        <motion.div 
+                          initial={{ opacity: 0, y: -10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-[11px] text-red-500 font-black uppercase tracking-widest text-center flex items-center justify-center gap-2"
+                        >
+                          <AlertTriangle size={14} /> {verificationError}
+                        </motion.div>
                       )}
                     </div>
 
-                    <div className="flex flex-col gap-3">
+                    <div className="flex flex-col gap-4">
                       <button 
                         disabled={isVerifying}
-                        className="w-full py-4 rounded-2xl bg-brand-accent text-white text-[10px] font-black uppercase tracking-widest shadow-xl shadow-brand-accent/20 hover:bg-blue-900 transition-all font-display disabled:opacity-50"
+                        className="w-full py-5 rounded-2xl bg-brand-accent text-white text-[11px] font-black uppercase tracking-widest shadow-[0_10px_30px_rgba(30,58,138,0.4)] hover:bg-blue-900 transition-all font-display disabled:opacity-50 flex items-center justify-center gap-3"
                       >
-                        {isVerifying ? 'Verifying Credentials...' : 'Finalize Identity Claim'}
+                        {isVerifying ? (
+                          <>
+                            <RefreshCw size={16} className="animate-spin" />
+                            Verifying...
+                          </>
+                        ) : (
+                          <>
+                            <Shield size={16} />
+                            Validate Identity
+                          </>
+                        )}
                       </button>
                       <button 
                         type="button"
@@ -666,15 +691,30 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
         tabIndex={-1}
       >
         <AnimatePresence mode="wait">
-          <motion.div
-            key={location.pathname}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.3 }}
-          >
-            {children}
-          </motion.div>
+          {!needsVerification ? (
+            <motion.div
+              key={location.pathname}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.3 }}
+            >
+              {children}
+            </motion.div>
+          ) : (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="flex items-center justify-center py-20"
+            >
+              <div className="text-center space-y-4">
+                <Shield size={48} className="mx-auto text-brand-accent/20" />
+                <p className="text-[10px] font-black uppercase tracking-widest text-brand-text-dim">
+                  Awaiting Administrative Verification...
+                </p>
+              </div>
+            </motion.div>
+          )}
         </AnimatePresence>
       </main>
 

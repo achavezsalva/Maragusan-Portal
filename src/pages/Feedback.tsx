@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { collection, onSnapshot, query, addDoc, updateDoc, deleteDoc, doc, orderBy, where, serverTimestamp } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
 import { format } from 'date-fns';
 import { 
@@ -45,23 +44,41 @@ const Feedback: React.FC = () => {
       return;
     }
 
-    let feedbackQuery = query(collection(db, 'feedback'), orderBy('created_at', 'desc'));
-    
-    if (!isAdmin) {
-      feedbackQuery = query(collection(db, 'feedback'), where('user_id', '==', user.uid), orderBy('created_at', 'desc'));
-    }
+    const fetchFeedback = async () => {
+      let query = supabase
+        .from('feedback')
+        .select('*')
+        .order('created_at', { ascending: false });
 
-    const unsubscribe = onSnapshot(feedbackQuery, (snapshot) => {
-      const fbList: FeedbackEntry[] = [];
-      snapshot.forEach((doc) => fbList.push({ id: doc.id, ...(doc.data() as any) }));
-      setMessages(fbList);
-      setLoading(false);
-    }, (error) => {
-      console.error("Feedback subscription error:", error);
-      setLoading(false);
-    });
+      if (!isAdmin) {
+        query = query.eq('user_id', user.id);
+      }
 
-    return () => unsubscribe();
+      const { data, error } = await query;
+      if (error) {
+        console.error("Feedback fetch error:", error);
+      } else {
+        setMessages(data || []);
+      }
+      setLoading(false);
+    };
+
+    fetchFeedback();
+
+    const channel = supabase
+      .channel('feedback-changes')
+      .on('postgres_changes', { 
+        event: '*', 
+        schema: 'public', 
+        table: 'feedback' 
+      }, () => {
+        fetchFeedback();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [user, profile, isAdmin]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -70,12 +87,11 @@ const Feedback: React.FC = () => {
     
     setSubmitting(true);
     try {
-      await addDoc(collection(db, 'feedback'), {
-        user_id: user.uid,
-        user_name: profile?.name || user.displayName || user.email || 'Anonymous Citizen',
+      await supabase.from('feedback').insert({
+        user_id: user.id,
+        user_name: profile?.name || user.user_metadata?.full_name || user.email || 'Anonymous Citizen',
         message: text,
         status: 'received',
-        created_at: serverTimestamp()
       });
 
       setText('');
@@ -92,9 +108,10 @@ const Feedback: React.FC = () => {
   const handleStatusUpdate = async (feedbackId: string, currentStatus: string) => {
     const newStatus = currentStatus === 'resolved' ? 'received' : 'resolved';
     try {
-      await updateDoc(doc(db, 'feedback', feedbackId), {
-        status: newStatus
-      });
+      await supabase
+        .from('feedback')
+        .update({ status: newStatus })
+        .eq('id', feedbackId);
     } catch (err: any) {
       console.error("Failed to update status:", err);
       alert(`Update failed: ${err.message}`);
@@ -109,7 +126,7 @@ const Feedback: React.FC = () => {
     if (!deleteModal.id) return;
 
     try {
-      await deleteDoc(doc(db, 'feedback', deleteModal.id));
+      await supabase.from('feedback').delete().eq('id', deleteModal.id);
       setDeleteModal({ open: false, id: null });
     } catch (err: any) {
       console.error("Failed to delete feedback:", err);
@@ -221,7 +238,7 @@ const Feedback: React.FC = () => {
                         {m.user_name}
                       </span>
                       <span className="text-[9px] font-bold text-brand-text-dim uppercase tracking-widest">
-                        {m.created_at ? (typeof m.created_at.toDate === 'function' ? format(m.created_at.toDate(), 'MMMM d, yyyy') : format(new Date(m.created_at), 'MMMM d, yyyy')) : 'Processing...'}
+                        {m.created_at ? format(new Date(m.created_at), 'MMMM d, yyyy') : 'Processing...'}
                       </span>
                     </div>
                     <div className="flex items-center gap-2">

@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { collection, onSnapshot, query, addDoc, doc, orderBy, where, serverTimestamp } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
 import { format } from 'date-fns';
 import { 
@@ -51,23 +50,38 @@ const Services: React.FC = () => {
       return;
     }
 
-    const requestsQuery = query(
-      collection(db, 'service_requests'), 
-      where('user_id', '==', user.uid),
-      orderBy('created_at', 'desc')
-    );
+    const fetchRequests = async () => {
+      const { data, error } = await supabase
+        .from('service_requests')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
 
-    const unsubscribe = onSnapshot(requestsQuery, (snapshot) => {
-      const requestsList: ServiceRequest[] = [];
-      snapshot.forEach((doc) => requestsList.push({ id: doc.id, ...(doc.data() as any) }));
-      setRequests(requestsList);
+      if (error) {
+        console.error("Service requests fetch error:", error);
+      } else {
+        setRequests(data || []);
+      }
       setLoading(false);
-    }, (error) => {
-      console.error("Service requests snapshot error:", error);
-      setLoading(false);
-    });
+    };
 
-    return () => unsubscribe();
+    fetchRequests();
+
+    const channel = supabase
+      .channel('service_requests-changes')
+      .on('postgres_changes', { 
+        event: '*', 
+        schema: 'public', 
+        table: 'service_requests',
+        filter: `user_id=eq.${user.id}`
+      }, () => {
+        fetchRequests();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [user]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -76,11 +90,10 @@ const Services: React.FC = () => {
     
     setSubmitting(true);
     try {
-      await addDoc(collection(db, 'service_requests'), {
-        user_id: user.uid,
+      await supabase.from('service_requests').insert({
+        user_id: user.id,
         service_type: serviceType,
         status: 'pending',
-        created_at: serverTimestamp()
       });
       
       setShowModal(false);
@@ -158,7 +171,7 @@ const Services: React.FC = () => {
                     <h3 className="text-xl font-bold">{req.service_type}</h3>
                     <div className="flex items-center gap-1.5 text-[10px] text-brand-text-dim uppercase tracking-widest">
                       <Clock size={12} aria-hidden="true" />
-                      Filing Date: {req.created_at ? (typeof req.created_at.toDate === 'function' ? format(req.created_at.toDate(), 'MMMM d, yyyy') : format(new Date(req.created_at), 'MMMM d, yyyy')) : 'Pending Verification'}
+                      Filing Date: {req.created_at ? format(new Date(req.created_at), 'MMMM d, yyyy') : 'Pending Verification'}
                     </div>
                   </div>
 

@@ -23,13 +23,12 @@ import {
   Copy
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { collection, onSnapshot, query, setDoc, doc, deleteDoc, updateDoc, writeBatch, orderBy } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
 import { useAuth, UserProfile } from '../hooks/useAuth';
 import { ALL_DEPARTMENTS, ALL_DEPT_DETAILS, DepartmentInfo } from '../constants/departments';
 
 const Admin: React.FC = () => {
-  const { profile, isAdmin } = useAuth();
+  const { user, profile, isAdmin } = useAuth();
   const [activeTab, setActiveTab] = useState<'personnel' | 'departments'>('personnel');
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [departments, setDepartments] = useState<DepartmentInfo[]>([]);
@@ -43,6 +42,7 @@ const Admin: React.FC = () => {
   const [deptSearch, setDeptSearch] = useState('');
   const [isDeptDropdownOpen, setIsDeptDropdownOpen] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isSyncConfirmModalOpen, setIsSyncConfirmModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [registrationStatus, setRegistrationStatus] = useState<{
     show: boolean;
@@ -84,40 +84,95 @@ const Admin: React.FC = () => {
   useEffect(() => {
     if (!isAdmin) return;
 
-    const usersQuery = query(collection(db, 'users'), orderBy('created_at', 'desc'));
-    const unsubscribeUsers = onSnapshot(usersQuery, (snapshot) => {
-      const usersList: any[] = [];
-      snapshot.forEach((doc) => usersList.push({ ...doc.data() }));
-      setUsers(usersList);
-    });
+    const fetchUsers = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('users')
+          .select('*')
+          .order('created_at', { ascending: false });
+        
+        if (error) throw error;
+        setUsers(data || []);
+      } catch (err) {
+        console.error("Failed to fetch users:", err);
+      }
+    };
 
-    const unsubscribeDepts = onSnapshot(collection(db, 'departments'), (snapshot) => {
-      const deptsList: any[] = [];
-      snapshot.forEach((doc) => deptsList.push({ ...doc.data() }));
-      setDepartments(deptsList);
-    });
+    const fetchDepts = async () => {
+      try {
+        const { data, error } = await supabase.from('departments').select('*');
+        if (error) throw error;
+        setDepartments(data || []);
+        
+        // Auto-sync if empty to prevent Foreign Key errors
+        if ((!data || data.length === 0) && profile?.role === 'admin') {
+          console.log("Auto-syncing departments...");
+          await supabase.from('departments').upsert(ALL_DEPT_DETAILS, { onConflict: 'id' });
+          const { data: syncedData } = await supabase.from('departments').select('*');
+          setDepartments(syncedData || []);
+        }
+      } catch (err) {
+        console.error("Failed to fetch depts:", err);
+      }
+    };
+
+    fetchUsers();
+    fetchDepts();
+
+    const usersChannel = supabase
+      .channel('admin-users-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, () => {
+        fetchUsers();
+      })
+      .subscribe();
+
+    const deptsChannel = supabase
+      .channel('admin-depts-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'departments' }, () => {
+        fetchDepts();
+      })
+      .subscribe();
 
     return () => {
-      unsubscribeUsers();
-      unsubscribeDepts();
+      supabase.removeChannel(usersChannel);
+      supabase.removeChannel(deptsChannel);
     };
   }, [isAdmin]);
 
   const syncDepartments = async () => {
-    if (!confirm("This will overwrite existing department metadata with default configurations from the system constants. Proceed with synchronization?")) return;
-    
     setIsSyncing(true);
+    setIsSyncConfirmModalOpen(false);
     try {
-      const batch = writeBatch(db);
-      ALL_DEPT_DETAILS.forEach((dept) => {
-        const docRef = doc(db, 'departments', dept.id);
-        batch.set(docRef, dept);
+      // First, verify we are still logged in as admin
+      if (!profile || profile.role !== 'admin') {
+        const { data: currentProfile } = await supabase.from('users').select('role').eq('id', user?.id).single();
+        if (currentProfile?.role !== 'admin' && user?.email !== 'achavezsalva@gmail.com') {
+          throw new Error("Authorization Error: System does not recognize you as a verified Administrator in the database ledger. Please try refreshing the page.");
+        }
+      }
+
+      const { error } = await supabase
+        .from('departments')
+        .upsert(ALL_DEPT_DETAILS, { onConflict: 'id' });
+      
+      if (error) throw error;
+      
+      setRegistrationStatus({
+        show: true,
+        success: true,
+        message: "Departments synchronized successfully with the master ledger."
       });
-      await batch.commit();
-      alert("Departments synchronized successfully.");
-    } catch (error) {
-      console.error("Error syncing departments:", error);
-      alert("Failed to sync departments.");
+
+      // Refresh list
+      const { data } = await supabase.from('departments').select('*');
+      setDepartments(data || []);
+    } catch (err: any) {
+      console.error("Error syncing departments:", err);
+      setRegistrationStatus({
+        show: true,
+        success: false,
+        message: `System Sync Failure: ${err.message || 'Check database permissions'}`
+      });
     } finally {
       setIsSyncing(false);
     }
@@ -125,8 +180,8 @@ const Admin: React.FC = () => {
 
   const filteredUsers = users.filter(user => {
     const matchesSearch = 
-      user.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-      user.email.toLowerCase().includes(searchTerm.toLowerCase());
+      (user.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+      (user.email || '').toLowerCase().includes(searchTerm.toLowerCase());
     const matchesRole = roleFilter === 'all' || user.role === roleFilter;
     return matchesSearch && matchesRole;
   });
@@ -136,7 +191,7 @@ const Admin: React.FC = () => {
     d.head.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const isPending = (userId: string) => userId.startsWith('pre_auth:');
+  const isPending = (userId: string) => userId && userId.startsWith('pre_auth:');
 
   const handleEditClick = (user: UserProfile) => {
     setSelectedUser(user);
@@ -155,10 +210,15 @@ const Admin: React.FC = () => {
     if (!selectedUser) return;
     
     try {
-      await updateDoc(doc(db, 'users', selectedUser.uid), {
-        role: editRole,
-        department_id: editRole === 'citizen' ? null : editDept
-      });
+      const { error } = await supabase
+        .from('users')
+        .update({
+          role: editRole,
+          department_id: editRole === 'citizen' ? null : editDept
+        })
+        .eq('id', selectedUser.id);
+      
+      if (error) throw error;
       
       setIsEditModalOpen(false);
       setSelectedUser(null);
@@ -171,7 +231,11 @@ const Admin: React.FC = () => {
     if (!deptForm || !selectedDept) return;
     
     try {
-      await setDoc(doc(db, 'departments', selectedDept.id), deptForm);
+      const { error } = await supabase
+        .from('departments')
+        .upsert(deptForm);
+      
+      if (error) throw error;
       
       setIsDeptEditModalOpen(false);
       setSelectedDept(null);
@@ -191,7 +255,12 @@ const Admin: React.FC = () => {
     if (!selectedUser) return;
     
     try {
-      await deleteDoc(doc(db, 'users', selectedUser.uid));
+      const { error } = await supabase
+        .from('users')
+        .delete()
+        .eq('id', selectedUser.id);
+      
+      if (error) throw error;
         
       setIsDeleteModalOpen(false);
       setIsEditModalOpen(false);
@@ -207,18 +276,26 @@ const Admin: React.FC = () => {
     if (!newName || !newEmail) return;
 
     try {
-      // Create a document with a deterministic ID for pre-authorization
+      // Create a record for pre-authorization
       const preAuthId = `pre_auth:${newEmail.toLowerCase().trim()}`;
-      await setDoc(doc(db, 'users', preAuthId), {
-        uid: preAuthId,
-        name: newName,
-        email: newEmail.toLowerCase().trim(),
-        role: newRole,
-        department_id: newRole === 'citizen' ? null : newDept,
-        access_key: newAccessKey,
-        is_claimed: false,
-        created_at: new Date().toISOString()
-      });
+      const { error } = await supabase
+        .from('users')
+        .insert({
+          id: preAuthId,
+          name: newName,
+          email: newEmail.toLowerCase().trim(),
+          role: newRole,
+          department_id: (newRole === 'citizen' || !newDept) ? null : newDept,
+          access_key: newAccessKey,
+          is_claimed: false,
+        });
+      
+      if (error) {
+        if (error.code === '42501') {
+          throw new Error("Municipal Security Protocol: Your account requires elevated database privileges. Please ensure the latest SQL schema updates have been applied to the Municipal Ledger.");
+        }
+        throw error;
+      }
       
       // Feedback to user
       setRegistrationStatus({
@@ -229,19 +306,23 @@ const Admin: React.FC = () => {
         key: newAccessKey
       });
 
+      // Refresh list
+      const { data: updatedUsers } = await supabase.from('users').select('*').order('created_at', { ascending: false });
+      setUsers(updatedUsers || []);
+
       // Reset form
       setNewName('');
       setNewEmail('');
       setNewRole('staff');
       setNewDept('');
-      setNewAccessKey('');
       setIsAddModalOpen(false);
-    } catch (error) {
-      console.error("Error adding user:", error);
+    } catch (err: any) {
+      console.error("Error adding user:", err);
+      const errorMessage = err?.message || err?.details || (typeof err === 'string' ? err : 'Check administrative permissions');
       setRegistrationStatus({
         show: true,
         success: false,
-        message: `Clearance Denied: ${error instanceof Error ? error.message : 'Check administrative permissions'}.`
+        message: `Clearance Denied: ${errorMessage}.`
       });
     }
   };
@@ -249,14 +330,18 @@ const Admin: React.FC = () => {
   if (!isAdmin) {
     return (
       <div className="flex flex-col items-center justify-center py-20 space-y-6">
-        <Shield size={64} className="text-red-500/50" />
-        <h1 className="text-2xl font-display uppercase tracking-tight text-brand-text-bright text-center">
-          Restricted Access Area
-        </h1>
-        <p className="text-brand-text-dim max-w-md text-center uppercase tracking-widest text-xs font-black">
-          You do not have the clearance levels required to access the Administrative Protocols. 
-          Please return to the public sector.
-        </p>
+        <div className="w-20 h-20 bg-red-50 rounded-3xl flex items-center justify-center text-red-500 border border-red-100">
+          <Shield size={40} />
+        </div>
+        <div className="text-center space-y-2">
+          <h1 className="text-2xl font-display uppercase tracking-tight text-brand-text-bright">
+            Clearance Required
+          </h1>
+          <p className="text-brand-text-dim max-w-sm mx-auto uppercase tracking-widest text-[10px] font-black leading-relaxed">
+            Administrative level clearance is required to access these protocols. 
+            Verification of identity and "Is Claimed" status must be validated.
+          </p>
+        </div>
       </div>
     );
   }
@@ -310,24 +395,24 @@ const Admin: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
             <div className="glass-card p-6 border-l-4 border-l-brand-accent">
               <div className="text-[10px] font-black uppercase tracking-widest text-brand-text-dim mb-1">Total Personnel</div>
-              <div className="text-3xl font-display text-brand-text-bright">{users.filter(u => !isPending(u.uid)).length}</div>
+              <div className="text-3xl font-display text-brand-text-bright">{users.filter(u => !isPending(u.id)).length}</div>
             </div>
             <div className="glass-card p-6 border-l-4 border-l-brand-secondary">
               <div className="text-[10px] font-black uppercase tracking-widest text-brand-text-dim mb-1">Municipal Staff</div>
               <div className="text-3xl font-display text-brand-text-bright">
-                {users.filter(u => !isPending(u.uid) && (u.role === 'staff' || u.role === 'admin')).length}
+                {users.filter(u => !isPending(u.id) && (u.role === 'staff' || u.role === 'admin')).length}
               </div>
             </div>
             <div className="glass-card p-6 border-l-4 border-l-brand-text-dim">
               <div className="text-[10px] font-black uppercase tracking-widest text-brand-text-dim mb-1">Public Citizens</div>
               <div className="text-3xl font-display text-brand-text-bright">
-                {users.filter(u => !isPending(u.uid) && u.role === 'citizen').length}
+                {users.filter(u => !isPending(u.id) && u.role === 'citizen').length}
               </div>
             </div>
             <div className="glass-card p-6 border-l-4 border-l-yellow-500">
               <div className="text-[10px] font-black uppercase tracking-widest text-brand-text-dim mb-1">Pending Portal Auth</div>
               <div className="text-3xl font-display text-yellow-500">
-                {users.filter(u => isPending(u.uid)).length}
+                {users.filter(u => isPending(u.id)).length}
               </div>
             </div>
           </div>
@@ -406,22 +491,22 @@ const Admin: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-brand-border/50">
                   {filteredUsers.map((user) => (
-                    <tr key={user.uid} className="hover:bg-brand-accent/5 transition-colors group">
+                    <tr key={user.id} className="hover:bg-brand-accent/5 transition-colors group">
                       <td className="px-6 py-5">
                         <div className="flex items-center gap-4">
                           <div className="w-10 h-10 rounded-lg bg-brand-bg border border-brand-border flex items-center justify-center text-brand-accent font-display text-lg">
-                            {user.name[0]}
+                            {user.name?.[0] || '?'}
                           </div>
                           <div>
                             <div className="text-sm font-bold text-brand-text-bright tracking-tight flex items-center gap-2">
                               {user.name}
-                              {isPending(user.uid) && (
+                              {isPending(user.id) && (
                                 <span className="text-[8px] px-1.5 py-0.5 bg-yellow-500/10 text-yellow-500 border border-yellow-500/20 rounded-full font-black uppercase tracking-widest">Pending</span>
                               )}
                             </div>
                             <div className="text-[10px] text-brand-text-dim font-black uppercase tracking-widest flex flex-col gap-1 mt-1">
                               <span className="flex items-center gap-2"><Mail size={10} /> {user.email}</span>
-                              {isPending(user.uid) && user.access_key && (
+                              {isPending(user.id) && user.access_key && (
                                 <span className="text-brand-accent font-mono text-[9px] flex items-center gap-2">
                                   <Shield size={10} /> KEY: {user.access_key}
                                 </span>
@@ -447,7 +532,7 @@ const Admin: React.FC = () => {
                       </td>
                       <td className="px-6 py-5 text-right">
                         <div className="flex items-center justify-end gap-2">
-                          {isPending(user.uid) && (
+                          {isPending(user.id) && (
                             <button 
                               onClick={() => {
                                 const msg = `Municipal Portal Authorization:
@@ -502,7 +587,7 @@ Stay safe, citizen.`;
               </div>
             </div>
             <button 
-              onClick={syncDepartments}
+              onClick={() => setIsSyncConfirmModalOpen(true)}
               disabled={isSyncing}
               className="flex items-center gap-3 bg-white/5 border border-brand-border text-brand-text-dim px-8 py-4 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:text-brand-accent hover:border-brand-accent transition-all disabled:opacity-50"
             >
@@ -565,7 +650,7 @@ Stay safe, citizen.`;
                 <p className="text-[10px] text-brand-text-dim/50 uppercase tracking-widest">Initialization required to enable dynamic content management.</p>
               </div>
               <button 
-                onClick={syncDepartments}
+                onClick={() => setIsSyncConfirmModalOpen(true)}
                 className="mx-auto flex items-center gap-3 bg-brand-accent text-white px-8 py-4 rounded-2xl text-[11px] font-black uppercase tracking-widest shadow-xl shadow-brand-accent/20 hover:bg-brand-accent/90 transition-all font-display"
               >
                 Initialize Sector Database
@@ -614,7 +699,7 @@ Stay safe, citizen.`;
                 {/* User Info Header */}
                 <div className="bg-white/5 p-4 rounded-2xl flex items-center gap-4">
                   <div className="w-12 h-12 rounded-xl bg-brand-bg border border-brand-border flex items-center justify-center font-display text-xl text-brand-accent">
-                    {selectedUser.name[0]}
+                    {selectedUser.name?.[0]}
                   </div>
                   <div>
                     <div className="text-sm font-bold text-brand-text-bright">{selectedUser.name}</div>
@@ -652,6 +737,7 @@ Stay safe, citizen.`;
                       onChange={setEditDept}
                       isOpen={isDeptDropdownOpen}
                       setIsOpen={setIsDeptDropdownOpen}
+                      availableDepts={departments}
                     />
                   </div>
                 )}
@@ -935,6 +1021,7 @@ Stay safe, citizen.`;
                           onChange={setNewDept}
                           isOpen={isDeptDropdownOpen}
                           setIsOpen={setIsDeptDropdownOpen}
+                          availableDepts={departments}
                         />
                       </div>
 
@@ -1035,6 +1122,67 @@ Stay safe, citizen.`;
         )}
       </AnimatePresence>
 
+      {/* Sync Confirmation Modal */}
+      <AnimatePresence>
+        {isSyncConfirmModalOpen && (
+          <div className="fixed inset-0 z-[75] flex items-center justify-center p-6 bg-brand-bg/60 backdrop-blur-sm">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-lg bg-brand-bg border border-brand-accent/30 rounded-[2.5rem] shadow-2xl p-10 space-y-8"
+            >
+              <div className="flex flex-col items-center text-center space-y-6">
+                <div className="w-20 h-20 bg-brand-accent/10 rounded-3xl flex items-center justify-center text-brand-accent border border-brand-accent/20">
+                  <RefreshCw size={40} className={isSyncing ? 'animate-spin' : ''} />
+                </div>
+                
+                <div className="space-y-2">
+                  <h2 className="text-3xl font-display text-brand-text-bright uppercase tracking-tight italic">System Sync</h2>
+                  <p className="text-[10px] text-brand-text-dim uppercase tracking-[0.4em] font-black">Database Reconciliation Protocol</p>
+                </div>
+                
+                <div className="bg-brand-accent/5 p-8 rounded-3xl border border-brand-accent/10 w-full text-center space-y-4">
+                  <p className="text-xs text-brand-text-bright leading-relaxed">
+                    This operation will synchronize the <span className="text-brand-accent font-black uppercase">Municipal Sector Ledger</span> with system default configurations.
+                  </p>
+                  <p className="p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-xl text-[10px] text-yellow-500 font-bold uppercase tracking-widest leading-relaxed">
+                    Warning: Existing department metadata, descriptions, and custom head-of-office assignments may be overwritten.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex gap-4">
+                <button 
+                  onClick={() => setIsSyncConfirmModalOpen(false)}
+                  disabled={isSyncing}
+                  className="flex-1 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest text-brand-text-dim border border-brand-border hover:bg-white/5 transition-all"
+                >
+                  Abort
+                </button>
+                <button 
+                  onClick={syncDepartments}
+                  disabled={isSyncing}
+                  className="flex-1 py-4 rounded-2xl bg-brand-accent text-white text-[10px] font-black uppercase tracking-widest shadow-xl shadow-brand-accent/20 hover:bg-blue-900 transition-all font-display disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {isSyncing ? (
+                    <>
+                      <RefreshCw size={14} className="animate-spin" />
+                      Processing...
+                    </>
+                  ) : (
+                    <>
+                      <Check size={16} />
+                      Confirm Sync
+                    </>
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* Registration Status Modal */}
       <AnimatePresence>
         {registrationStatus.show && (
@@ -1118,11 +1266,18 @@ const DepartmentDropdown: React.FC<{
   onChange: (val: string) => void;
   isOpen: boolean;
   setIsOpen: (open: boolean) => void;
-}> = ({ value, onChange, isOpen, setIsOpen }) => {
+  availableDepts?: DepartmentInfo[];
+}> = ({ value, onChange, isOpen, setIsOpen, availableDepts }) => {
   const [search, setSearch] = useState('');
-  const filteredDepts = ALL_DEPARTMENTS.filter(d => 
-    d.toLowerCase().includes(search.toLowerCase())
+  
+  // Prefer using the actual DB records if provided, fallback to constants
+  const listToUse = (availableDepts && availableDepts.length > 0) ? availableDepts : ALL_DEPT_DETAILS;
+  
+  const filteredDepts = listToUse.filter(d => 
+    d.name.toLowerCase().includes(search.toLowerCase())
   );
+
+  const selectedDeptName = listToUse.find(d => d.id === value)?.name || value;
 
   return (
     <div className="relative">
@@ -1133,7 +1288,7 @@ const DepartmentDropdown: React.FC<{
         <div className="flex items-center gap-3">
           <Building2 size={16} className="text-brand-accent" />
           <span className={`text-xs font-bold uppercase tracking-widest ${value ? 'text-brand-text-bright' : 'text-brand-text-dim/40'}`}>
-            {value || 'Select Sector...'}
+            {selectedDeptName || 'Select Sector...'}
           </span>
         </div>
         <ChevronDown size={16} className={`text-brand-text-dim transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`} />
@@ -1162,19 +1317,24 @@ const DepartmentDropdown: React.FC<{
               </div>
             </div>
             <div className="overflow-y-auto custom-scrollbar flex-1">
-              {filteredDepts.map((d, idx) => (
+              {filteredDepts.map((d) => (
                 <div 
-                  key={idx}
+                  key={d.id}
                   className="px-4 py-3 flex items-center justify-between hover:bg-brand-accent/10 cursor-pointer transition-colors group"
                   onClick={() => {
-                    onChange(d);
+                    onChange(d.id);
                     setIsOpen(false);
                   }}
                 >
-                  <span className="text-[10px] font-black uppercase tracking-widest text-brand-text-dim group-hover:text-brand-accent transition-colors">
-                    {d}
-                  </span>
-                  {value === d && <Check size={14} className="text-brand-accent" />}
+                  <div className="flex flex-col">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-brand-text-dim group-hover:text-brand-accent transition-colors">
+                      {d.name}
+                    </span>
+                    <span className="text-[7px] text-brand-text-dim/50 uppercase tracking-tighter">
+                      {d.id}
+                    </span>
+                  </div>
+                  {value === d.id && <Check size={14} className="text-brand-accent" />}
                 </div>
               ))}
               {filteredDepts.length === 0 && (

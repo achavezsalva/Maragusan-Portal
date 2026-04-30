@@ -13,8 +13,7 @@ import {
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Link } from 'react-router-dom';
-import { collection, onSnapshot, query } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
 import { DEPARTMENT_CATEGORIES, DepartmentInfo } from '../constants/departments';
 
 const Directory: React.FC = () => {
@@ -22,17 +21,24 @@ const Directory: React.FC = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const q = query(collection(db, 'departments'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const depts: any[] = [];
-      snapshot.forEach((doc) => {
-        depts.push({ ...doc.data() });
-      });
-      setDynamicDepts(depts);
+    const fetchDepts = async () => {
+      const { data } = await supabase.from('departments').select('*');
+      if (data) setDynamicDepts(data);
       setLoading(false);
-    });
+    };
 
-    return () => unsubscribe();
+    fetchDepts();
+
+    const channel = supabase
+      .channel('directory-depts-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'departments' }, () => {
+        fetchDepts();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const categories = DEPARTMENT_CATEGORIES.map(cat => {

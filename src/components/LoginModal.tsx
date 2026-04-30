@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, updateProfile } from 'firebase/auth';
-import { auth } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
 import { Mail, Lock, User, ShieldCheck, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -24,24 +23,28 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
 
     try {
       if (isRegistering) {
-        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-        await updateProfile(userCredential.user, { displayName: name });
-        alert('Registration successful!');
+        const { error: signUpError } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: {
+              full_name: name,
+            },
+          },
+        });
+        if (signUpError) throw signUpError;
+        alert('Registration successful! Please check your email for verification.');
       } else {
-        await signInWithEmailAndPassword(auth, email, password);
+        const { error: signInError } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+        if (signInError) throw signInError;
       }
       onClose();
     } catch (err: any) {
-      console.error("Firebase Auth Error:", err.code, err.message);
-      if (err.code === 'auth/operation-not-allowed') {
-        setError('PROVIDER DISABLED: Please enable Email/Password or Google Login in your Firebase Console (Authentication > Sign-in method).');
-      } else if (err.code === 'auth/invalid-credential') {
-        setError('ACCESS DENIED: Credentials not recognized. If you were recently invited by an admin, you MUST use the "Create Staff Identity Account" option below first to set up your password.');
-      } else if (err.code === 'auth/too-many-requests') {
-        setError('SYSTEM LOCKOUT: Too many attempts. Access is temporarily suspended for this IP. Please wait 15 minutes before re-attempting.');
-      } else {
-        setError(err.message);
-      }
+      console.error("Supabase Auth Error:", err.message);
+      setError(err.message);
     } finally {
       setLoading(false);
     }
@@ -52,19 +55,16 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
     setError('');
     
     try {
-      const provider = new GoogleAuthProvider();
-      // Ensure specific domain if needed, but usually just popup is enough
-      await signInWithPopup(auth, provider);
-      onClose();
+      const { error: oauthError } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: window.location.origin
+        }
+      });
+      if (oauthError) throw oauthError;
     } catch (err: any) {
-      console.error("Firebase Auth Error:", err.code, err.message);
-      if (err.code === 'auth/operation-not-allowed') {
-        setError('GOOGLE LOGIN DISABLED: You must enable Google as a Sign-in provider in your Firebase Console.');
-      } else if (err.code === 'auth/invalid-credential') {
-        setError('SESSION EXPIRED: Please refresh the page and try logging in with Google again.');
-      } else {
-        setError(err.message);
-      }
+      console.error("Supabase OAuth Error:", err.message);
+      setError(err.message);
     } finally {
       setLoading(false);
     }
