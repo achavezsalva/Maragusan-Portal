@@ -16,7 +16,8 @@ import {
   AlertTriangle,
   ChevronRight,
   Plus,
-  Globe
+  Globe,
+  Send
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from '../lib/supabase';
@@ -26,7 +27,7 @@ import { MUNICIPAL_BRANDING } from '../constants';
 import { Link } from 'react-router-dom';
 
 const StaffDashboard: React.FC = () => {
-  const { profile, user, isStaff } = useAuth();
+  const { profile, user, isStaff, loading } = useAuth();
   const [department, setDepartment] = useState<DepartmentInfo | null>(null);
   const [sectorStaff, setSectorStaff] = useState<UserProfile[]>([]);
   const [announcements, setAnnouncements] = useState<any[]>([]);
@@ -39,21 +40,39 @@ const StaffDashboard: React.FC = () => {
     message: ''
   });
 
+  // Announcement State
+  const [showAnnModal, setShowAnnModal] = useState(false);
+  const [annTitle, setAnnTitle] = useState('');
+  const [annContent, setAnnContent] = useState('');
+  const [annImageUrl, setAnnImageUrl] = useState('');
+  const [annImages, setAnnImages] = useState<string[]>([]);
+  const [isAnnMunicipal, setIsAnnMunicipal] = useState(false);
+  const [editingAnnId, setEditingAnnId] = useState<string | null>(null);
+
+  const canPostMunicipal = !!(profile?.role === 'admin' || (profile?.department_id && MUNICIPAL_BRANDING.newsAuthorizedDepts.includes(profile.department_id)));
+
   const sectorId = profile?.department_id;
 
   useEffect(() => {
-    if (!sectorId || !user) {
-      if (!user) setIsLoading(false);
+    if (!profile || !isStaff) {
+      if (!loading && !isStaff) setIsLoading(false);
       return;
     }
 
     const fetchData = async () => {
       try {
+        const sectorId = profile.department_id;
+        if (!sectorId) {
+          setIsLoading(false);
+          return;
+        }
+
         // 1. Fetch Department
         const fallbackDept = ALL_DEPT_DETAILS.find(d => d.id === sectorId || d.name === sectorId);
         const targetId = fallbackDept?.id || sectorId;
 
-        if (fallbackDept && sectorId === fallbackDept.name) {
+        // Auto-fix legacy text-based department IDs if user is logged in via Supabase
+        if (user && fallbackDept && sectorId === fallbackDept.name) {
           await supabase
             .from('users')
             .update({ department_id: fallbackDept.id })
@@ -139,11 +158,11 @@ const StaffDashboard: React.FC = () => {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(usersChannel);
-      supabase.removeChannel(deptsChannel);
-      supabase.removeChannel(annChannel);
+      if (usersChannel) supabase.removeChannel(usersChannel);
+      if (deptsChannel) supabase.removeChannel(deptsChannel);
+      if (annChannel) supabase.removeChannel(annChannel);
     };
-  }, [sectorId, user?.id]);
+  }, [profile?.id, user?.id, isStaff, loading]);
 
   const handleUpdateSector = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -172,6 +191,73 @@ const StaffDashboard: React.FC = () => {
         success: false,
         message: 'Failed to synchronize metadata. Check clearance levels.'
       });
+    }
+  };
+
+  const handleSaveAnnouncement = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!annTitle || !annContent || !sectorId) return;
+
+    try {
+      if (editingAnnId) {
+        await supabase
+          .from('announcements')
+          .update({
+            title: annTitle,
+            content: annContent,
+            image_url: annImageUrl,
+            images: annImages,
+            is_municipal: isAnnMunicipal
+          })
+          .eq('id', editingAnnId);
+      } else {
+        await supabase
+          .from('announcements')
+          .insert({
+            title: annTitle,
+            content: annContent,
+            image_url: annImageUrl,
+            images: annImages,
+            department_id: sectorId,
+            author_id: user?.id,
+            is_municipal: isAnnMunicipal
+          });
+      }
+      
+      setAnnTitle('');
+      setAnnContent('');
+      setAnnImageUrl('');
+      setAnnImages([]);
+      setIsAnnMunicipal(false);
+      setEditingAnnId(null);
+      setShowAnnModal(false);
+      
+      setSaveStatus({
+        show: true,
+        success: true,
+        message: isAnnMunicipal 
+          ? 'Municipal Publication synchronized successfully. It will now appear on the Home Portal feed.' 
+          : 'Department Publication synchronized successfully.'
+      });
+      setTimeout(() => setSaveStatus({ ...saveStatus, show: false }), 3000);
+    } catch (err) {
+      console.error("Ann save error:", err);
+      alert("Error saving publication.");
+    }
+  };
+
+  const handleDeleteAnn = async (id: string) => {
+    if (!window.confirm('Terminate this publication record?')) return;
+    try {
+      await supabase.from('announcements').delete().eq('id', id);
+      setSaveStatus({
+        show: true,
+        success: true,
+        message: 'Publication record terminated.'
+      });
+      setTimeout(() => setSaveStatus({ ...saveStatus, show: false }), 3000);
+    } catch (err) {
+      console.error("Delete error:", err);
     }
   };
 
@@ -240,7 +326,7 @@ const StaffDashboard: React.FC = () => {
              <div className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
           </div>
           <h1 className="text-4xl md:text-6xl font-display uppercase tracking-tight leading-none drop-shadow-lg text-amber-400">
-            {department?.name || 'Loading Protocol...'}
+            {department?.name || (profile?.department_id ? profile.department_id : 'Unauthorized Sector')}
           </h1>
           <div className="flex flex-wrap items-center gap-6 pt-2">
             <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest bg-black/10 px-4 py-2 rounded-xl backdrop-blur-sm text-white border border-white/10">
@@ -274,12 +360,19 @@ const StaffDashboard: React.FC = () => {
           </div>
         </div>
         <div className="flex gap-4">
-          <Link 
-            to="/announcements" 
+          <button 
+            onClick={() => {
+              setEditingAnnId(null);
+              setAnnTitle('');
+              setAnnContent('');
+              setAnnImageUrl('');
+              setIsAnnMunicipal(canPostMunicipal);
+              setShowAnnModal(true);
+            }}
             className="flex items-center gap-3 bg-white/5 border border-brand-border text-brand-text-dim px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:text-brand-accent hover:border-brand-accent transition-all"
           >
-            <Megaphone size={16} /> Communications
-          </Link>
+            <Megaphone size={16} /> New Publication
+          </button>
           <button 
             onClick={() => setIsEditingProfile(true)}
             className="flex items-center gap-3 bg-brand-accent text-white px-8 py-3 rounded-xl text-[11px] font-black uppercase tracking-widest shadow-xl shadow-brand-accent/20 hover:scale-[1.02] transition-all"
@@ -408,12 +501,21 @@ const StaffDashboard: React.FC = () => {
                   <p className="text-[10px] text-brand-text-dim uppercase tracking-widest font-black italic">Active Public Sector Briefings</p>
                 </div>
               </div>
-              <Link 
-                to="/announcements" 
-                className="flex items-center gap-3 bg-white/5 border border-brand-border text-brand-text-dim px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:text-brand-accent hover:border-brand-accent transition-all"
-              >
-                <Plus size={16} /> New Publication
-              </Link>
+              {(profile?.role === 'admin' || (profile?.department_id && MUNICIPAL_BRANDING.newsAuthorizedDepts.includes(profile.department_id))) && (
+                <button 
+                  onClick={() => {
+                    setEditingAnnId(null);
+                    setAnnTitle('');
+                    setAnnContent('');
+                    setAnnImageUrl('');
+                    setIsAnnMunicipal(canPostMunicipal);
+                    setShowAnnModal(true);
+                  }}
+                  className="flex items-center gap-3 bg-white/5 border border-brand-border text-brand-text-dim px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:text-brand-accent hover:border-brand-accent transition-all"
+                >
+                  <Plus size={16} /> New Publication
+                </button>
+              )}
             </div>
 
             <div className="grid gap-4">
@@ -428,9 +530,28 @@ const StaffDashboard: React.FC = () => {
                        <div className="text-[9px] font-black uppercase tracking-[0.2em] text-brand-text-dim">PUBLISHED</div>
                        <div className="text-[10px] font-bold text-brand-text-bright">{ann.created_at ? 'System Logged' : 'Recent'}</div>
                     </div>
-                    <Link to="/announcements" className="p-3 text-brand-accent hover:bg-brand-accent/10 rounded-full transition-all">
-                       <ChevronRight size={20} />
-                    </Link>
+                    <div className="flex items-center gap-2">
+                       <button 
+                         onClick={() => {
+                           setEditingAnnId(ann.id);
+                           setAnnTitle(ann.title);
+                           setAnnContent(ann.content);
+                           setAnnImageUrl(ann.image_url || '');
+                           setAnnImages(ann.images || []);
+                           setIsAnnMunicipal(ann.is_municipal || false);
+                           setShowAnnModal(true);
+                         }}
+                         className="p-3 text-brand-text-dim hover:text-brand-accent transition-all"
+                       >
+                          <Edit2 size={16} />
+                       </button>
+                       <button 
+                         onClick={() => handleDeleteAnn(ann.id)}
+                         className="p-3 text-red-400 hover:bg-red-500/10 rounded-full transition-all"
+                       >
+                          <X size={16} />
+                       </button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -595,6 +716,166 @@ const StaffDashboard: React.FC = () => {
                     className="flex-1 py-4 rounded-2xl bg-brand-accent text-white text-[10px] font-black uppercase tracking-widest shadow-xl shadow-brand-accent/20 hover:bg-brand-accent/90 transition-all font-display flex items-center justify-center gap-2"
                   >
                     <Save size={16} /> Synchronize Data
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Publication Modal */}
+      <AnimatePresence>
+        {showAnnModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowAnnModal(false)}
+              className="absolute inset-0 bg-brand-bg/80 backdrop-blur-md"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-2xl bg-brand-bg border border-brand-border rounded-[2.5rem] shadow-2xl p-10 space-y-8 overflow-y-auto max-h-[90vh] custom-scrollbar"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-6">
+                  <div className="w-14 h-14 bg-brand-accent/10 rounded-2xl flex items-center justify-center text-brand-accent border border-brand-accent/20">
+                    <Megaphone size={24} />
+                  </div>
+                  <div>
+                    <h2 className="text-[10px] font-black uppercase tracking-[0.4em] text-brand-accent">Communication Protocol</h2>
+                    <p className="text-2xl font-display text-brand-text-bright leading-none mt-1">
+                      {editingAnnId ? 'Curate Publication' : 'New Publication Briefing'}
+                    </p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setShowAnnModal(false)}
+                  className="p-3 bg-white/5 rounded-full hover:bg-white/10 transition-all"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveAnnouncement} className="space-y-6">
+                <div className="space-y-4">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-brand-text-dim px-2">Heading</label>
+                  <input 
+                    type="text"
+                    required
+                    className="w-full bg-white/5 border border-brand-border rounded-xl px-5 py-4 text-base font-bold text-brand-text-bright focus:border-brand-accent outline-none"
+                    placeholder="Enter briefing title..."
+                    value={annTitle}
+                    onChange={(e) => setAnnTitle(e.target.value)}
+                  />
+                </div>
+
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center px-2">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-brand-text-dim">Publication Gallery</label>
+                    <button 
+                      type="button"
+                      onClick={() => setAnnImages([...annImages, ''])}
+                      className="text-[9px] font-black uppercase tracking-widest text-brand-accent hover:underline"
+                    >
+                      + Add Image URL
+                    </button>
+                  </div>
+                  
+                  <div className="space-y-3">
+                    <div className="relative">
+                      <input 
+                        type="url"
+                        className="w-full bg-white/5 border border-brand-border rounded-xl px-5 py-4 text-sm font-bold text-brand-text-bright focus:border-brand-accent outline-none pr-12"
+                        placeholder="Primary Cover Image URL..."
+                        value={annImageUrl}
+                        onChange={(e) => setAnnImageUrl(e.target.value)}
+                      />
+                      <div className="absolute right-4 top-1/2 -translate-y-1/2 text-[8px] font-black uppercase tracking-widest text-brand-accent bg-brand-accent/10 px-2 py-1 rounded border border-brand-accent/20">COVER</div>
+                    </div>
+
+                    {annImages.map((url, idx) => (
+                      <div key={idx} className="flex gap-2">
+                        <input 
+                          type="url"
+                          className="flex-1 bg-white/5 border border-brand-border rounded-xl px-5 py-3 text-xs font-medium text-brand-text-bright focus:border-brand-accent outline-none"
+                          placeholder={`Gallery Image #${idx + 1} URL...`}
+                          value={url}
+                          onChange={(e) => {
+                            const newImages = [...annImages];
+                            newImages[idx] = e.target.value;
+                            setAnnImages(newImages);
+                          }}
+                        />
+                        <button 
+                          type="button"
+                          onClick={() => setAnnImages(annImages.filter((_, i) => i !== idx))}
+                          className="p-2 text-red-400 hover:bg-red-500/10 rounded-lg transition-all"
+                        >
+                          <X size={16} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-[9px] text-brand-text-dim uppercase tracking-widest px-2 italic">Add multiple images for a dynamic gallery view in the article detail page.</p>
+                </div>
+
+                {canPostMunicipal ? (
+                  <div className="p-6 bg-brand-accent/5 border border-brand-accent/20 rounded-2xl flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-brand-accent text-white rounded-lg flex items-center justify-center shadow-lg shadow-brand-accent/20">
+                        <Globe size={20} />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-black uppercase tracking-widest text-brand-text-bright">Municipal Publication Hub</h4>
+                        <p className="text-[9px] text-brand-text-dim uppercase tracking-widest font-black italic">Promote to home portal feed</p>
+                      </div>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        checked={isAnnMunicipal}
+                        onChange={(e) => setIsAnnMunicipal(e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-accent"></div>
+                    </label>
+                  </div>
+                ) : (
+                  <div className="p-4 bg-slate-100/50 border border-brand-border rounded-xl text-[9px] font-bold text-brand-text-dim uppercase tracking-widest italic text-center">
+                    Note: This publication will be limited to your sector entry. Only authorized offices can promote to the home portal.
+                  </div>
+                )}
+
+                <div className="space-y-4">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-brand-text-dim px-2">Draft Content</label>
+                  <textarea 
+                    rows={8}
+                    required
+                    className="w-full bg-white/5 border border-brand-border rounded-xl px-5 py-4 text-sm font-medium text-brand-text-bright focus:border-brand-accent outline-none leading-relaxed"
+                    placeholder="Provide full disclosure of municipal update..."
+                    value={annContent}
+                    onChange={(e) => setAnnContent(e.target.value)}
+                  />
+                </div>
+
+                <div className="flex gap-4 pt-6">
+                  <button 
+                    type="button"
+                    onClick={() => setShowAnnModal(false)}
+                    className="flex-1 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest text-brand-text-dim border border-brand-border hover:bg-white/5 transition-all"
+                  >
+                    Discard Changes
+                  </button>
+                  <button 
+                    type="submit"
+                    className="flex-1 py-4 rounded-2xl bg-brand-accent text-white text-[10px] font-black uppercase tracking-widest shadow-xl shadow-brand-accent/20 hover:bg-brand-accent/90 transition-all font-display flex items-center justify-center gap-3"
+                  >
+                    <Send size={16} /> Publish Record
                   </button>
                 </div>
               </form>

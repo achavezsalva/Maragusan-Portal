@@ -21,11 +21,17 @@ import {
   GraduationCap,
   Megaphone,
   Calendar,
-  ChevronRight
+  ChevronRight,
+  RefreshCw,
+  Star,
+  User,
+  Link as LinkIcon,
+  X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from '../lib/supabase';
 import { format } from 'date-fns';
+import { useAuth } from '../hooks/useAuth';
 
 const HERO_SLIDES = [
   '/img/slide1.jpg.jpg',
@@ -53,26 +59,34 @@ const LandingPage = () => {
     return () => clearInterval(timer);
   }, []);
 
-  useEffect(() => {
-    const fetchNews = async () => {
-      setLoadingNews(true);
-      try {
-        const { data, error } = await supabase
+  const fetchNews = async () => {
+    setLoadingNews(true);
+    try {
+      const { data, error } = await supabase
+        .from('announcements')
+        .select('*, departments(name)')
+        .eq('is_municipal', true)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error("News fetch error (Supabase):", error);
+        const { data: fallbackData } = await supabase
           .from('announcements')
-          .select('*')
-          .eq('is_municipal', true)
-          .order('created_at', { ascending: false })
+          .select('*, departments(name)')
           .limit(3);
-
-        if (error) throw error;
-        setNews(data || []);
-      } catch (error) {
-        console.error("News fetch error:", error);
-      } finally {
-        setLoadingNews(false);
+        console.log("Fallback check (any announcements?):", fallbackData);
+        throw error;
       }
-    };
+      console.log("Fetched Municipal News:", data);
+      setNews(data || []);
+    } catch (error) {
+      console.error("News fetch error:", error);
+    } finally {
+      setLoadingNews(false);
+    }
+  };
 
+  useEffect(() => {
     fetchNews();
 
     // Set up real-time subscription
@@ -156,6 +170,106 @@ const LandingPage = () => {
         </div>
       </section>
 
+      {/* Municipal News & Activities */}
+      <section className="pb-32 bg-white relative !mt-0">
+        <div className="container-custom">
+          <div className="flex flex-col items-center text-center space-y-4 mb-20">
+            <div className="flex items-center gap-4">
+               <Star size={16} fill="#FF6B00" className="text-brand-accent" />
+               <span className="text-[11px] font-black uppercase tracking-[0.4em] text-brand-accent">Maragusan News</span>
+               <Star size={16} fill="#FF6B00" className="text-brand-accent" />
+            </div>
+            <h2 className="text-5xl font-display tracking-tight text-slate-900 uppercase">Latest News</h2>
+            <div className="w-24 h-1 bg-brand-accent rounded-full opacity-60" />
+            
+            <button 
+              onClick={fetchNews}
+              className="mt-4 flex items-center gap-2 px-6 py-3 bg-white border border-brand-border rounded-xl text-[10px] font-black uppercase tracking-widest text-brand-text-dim hover:text-brand-accent transition-all shadow-sm"
+            >
+              <RefreshCw size={14} className={loadingNews ? 'animate-spin' : ''} />
+              Refresh Feed
+            </button>
+          </div>
+          
+          <div className="grid md:grid-cols-3 gap-8">
+            {loadingNews ? (
+              [1, 2, 3].map(i => (
+                <div key={i} className="h-[450px] bg-white border border-brand-border rounded-xl animate-pulse shadow-sm" />
+              ))
+            ) : news.length > 0 ? (
+              news.map((item, idx) => (
+                <motion.article
+                  key={item.id}
+                  initial={{ opacity: 0, y: 30 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ delay: (idx % 3) * 0.15 }}
+                  className="group flex flex-col bg-white border border-slate-200 rounded-xl overflow-hidden hover:shadow-2xl transition-all duration-500 cursor-pointer"
+                  onClick={() => navigate(`/news/${item.id}`)}
+                >
+                  {/* Image Box Container */}
+                  <div className="relative h-60 overflow-hidden">
+                    <div className="absolute inset-0 bg-slate-900/40 group-hover:bg-brand-accent/20 transition-colors z-10 flex items-center justify-center opacity-0 group-hover:opacity-100">
+                      <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center text-brand-accent shadow-xl transform scale-50 group-hover:scale-100 transition-all duration-500">
+                        <LinkIcon size={20} />
+                      </div>
+                    </div>
+                    <img 
+                      src={item.image_url || `https://images.unsplash.com/photo-1541872703-74c5e443d1f0?q=80&w=800&auto=format&fit=crop`} 
+                      alt={item.title} 
+                      className="w-full h-full object-cover transform group-hover:scale-110 transition-transform duration-700"
+                    />
+                    {/* Date Badge */}
+                    <div className="absolute top-0 right-0 z-20">
+                      <div className="bg-[#FFD700] p-4 text-center min-w-[70px] shadow-lg">
+                         <h3 className="text-2xl font-display leading-none text-black">
+                           {item.created_at ? format(new Date(item.created_at), 'dd') : '00'}
+                         </h3>
+                         <span className="text-[10px] font-black uppercase tracking-tighter block mt-1 text-black/80">
+                           {item.created_at ? format(new Date(item.created_at), 'MMM') : 'RECENT'}
+                         </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="p-8 space-y-6 flex-1 flex flex-col">
+                    <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-brand-accent">
+                       <Star size={12} fill="currentColor" /> {item.departments?.name || "Official News"}
+                    </div>
+                    
+                    <h4 className="text-xl font-display tracking-tight leading-[1.3] text-slate-800 group-hover:text-brand-accent transition-colors line-clamp-3 uppercase">
+                      {item.title}
+                    </h4>
+
+                    <p className="text-sm text-brand-text-dim leading-relaxed line-clamp-3 font-medium opacity-80">
+                      {item.content}
+                    </p>
+
+                    <ul className="flex items-center gap-6 pt-6 mt-auto border-t border-slate-100">
+                      <li className="flex items-center gap-2 text-[9px] font-black uppercase tracking-widest text-brand-text-dim hover:text-brand-accent transition-colors">
+                        <User size={12} /> Info Officer
+                      </li>
+                      <li className="flex items-center gap-2 text-[9px] font-black uppercase tracking-widest text-brand-text-dim">
+                        <MessageSquare size={12} /> 0 Comments
+                      </li>
+                    </ul>
+                  </div>
+                </motion.article>
+              ))
+            ) : (
+              <div className="col-span-3 py-32 text-center bg-white rounded-3xl border border-dashed border-brand-border">
+                <div className="flex flex-col items-center gap-4">
+                  <Megaphone className="text-brand-text-dim/20" size={64} />
+                  <p className="text-[11px] font-mono uppercase tracking-[0.3em] text-brand-text-dim">
+                    NO ACTIVE NEWS & UPDATE AT THIS_TIME
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+
       {/* Landmark Section */}
       <section className="relative px-6">
         <div className="max-w-6xl mx-auto">
@@ -194,7 +308,7 @@ const LandingPage = () => {
                 <p className="text-brand-text-dim text-lg leading-relaxed">
                   Our modern Municipal Hall stands as a symbol of our commitment to transparent 
                   governance and progressive development. It serves as the primary hub for administrative 
-                  excellence, connecting every citizen to the services they need.
+                  excellence, connecting every Maragusanon to the services they need.
                 </p>
               </div>
 
@@ -211,76 +325,6 @@ const LandingPage = () => {
                 </div>
               </div>
             </motion.div>
-          </div>
-        </div>
-      </section>
-
-      {/* Municipal News & Activities */}
-      <section className="px-6 relative overflow-hidden">
-        <div className="max-w-7xl mx-auto space-y-12">
-          <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-            <div className="space-y-4">
-              <div className="inline-flex items-center gap-2 px-3 py-1 bg-brand-accent/10 rounded-full border border-brand-accent/20 text-brand-accent text-[9px] font-black uppercase tracking-[0.2em]">
-                <Megaphone size={12} /> Live Updates
-              </div>
-              <h2 className="text-4xl md:text-6xl font-display uppercase tracking-tight leading-none">
-                Official <br />
-                <span className="italic text-brand-secondary font-light">News & Update.</span>
-              </h2>
-            </div>
-            <Link 
-              to="/announcements" 
-              className="flex items-center gap-3 text-[10px] font-black uppercase tracking-widest text-brand-text-dim hover:text-brand-accent transition-colors group"
-            >
-              See All Publication Briefings 
-              <ChevronRight size={14} className="group-hover:translate-x-1 transition-transform" />
-            </Link>
-          </div>
-
-          <div className="grid md:grid-cols-3 gap-0 border border-brand-border rounded-[2rem] overflow-hidden">
-            {loadingNews ? (
-              [1, 2, 3].map(i => (
-                <div key={i} className="h-80 bg-slate-50 border-r last:border-r-0 border-brand-border animate-pulse" />
-              ))
-            ) : news.length > 0 ? (
-              news.map((item, idx) => (
-                <motion.article 
-                  key={item.id}
-                  initial={{ opacity: 0 }}
-                  whileInView={{ opacity: 1 }}
-                  viewport={{ once: true }}
-                  transition={{ delay: idx * 0.1 }}
-                  className="group flex flex-col p-10 bg-white border-r last:border-r-0 border-brand-border hover:bg-slate-50 transition-colors cursor-pointer"
-                  onClick={() => navigate('/announcements')}
-                >
-                  <div className="flex-1 space-y-6">
-                    <div className="flex items-center justify-between">
-                      <div className="text-[10px] font-mono font-medium py-1 px-2 bg-slate-100 rounded text-brand-text-dim uppercase tracking-wider">
-                        {item.created_at ? format(new Date(item.created_at), 'yyyy.MM.dd') : 'RECENT_ENTRY'}
-                      </div>
-                      <div className="w-2 h-2 rounded-full bg-brand-accent animate-pulse shadow-[0_0_8px_rgba(255,107,0,0.5)]" />
-                    </div>
-                    <h3 className="text-2xl font-display tracking-tight leading-[1.1] group-hover:text-brand-accent transition-colors line-clamp-2 uppercase">
-                      {item.title}
-                    </h3>
-                    <p className="text-sm text-brand-text-dim leading-relaxed line-clamp-4 font-medium italic opacity-70">
-                      {item.content}
-                    </p>
-                  </div>
-                  <div className="pt-8 flex items-center justify-between">
-                    <span className="text-[10px] font-black uppercase tracking-[0.3em] text-brand-accent flex items-center gap-2">
-                       READ_NEWS <ArrowRight size={12} />
-                    </span>
-                  </div>
-                </motion.article>
-              ))
-            ) : (
-              <div className="col-span-3 py-32 text-center bg-slate-50">
-                <p className="text-[11px] font-mono uppercase tracking-[0.3em] text-brand-text-dim">
-                  NO ACTIVE NEWS & UPDATE AT THIS_TIME
-                </p>
-              </div>
-            )}
           </div>
         </div>
       </section>

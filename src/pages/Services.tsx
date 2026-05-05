@@ -35,7 +35,7 @@ const serviceTypes = [
 ];
 
 const Services: React.FC = () => {
-  const { user, isCitizen } = useAuth();
+  const { user, profile } = useAuth();
   const [requests, setRequests] = useState<ServiceRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -45,16 +45,17 @@ const Services: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    if (!user) {
+    if (!profile && !user) {
       setLoading(false);
       return;
     }
 
     const fetchRequests = async () => {
+      const currentId = user?.id || profile?.id;
       const { data, error } = await supabase
         .from('service_requests')
         .select('*')
-        .eq('user_id', user.id)
+        .eq('user_id', currentId)
         .order('created_at', { ascending: false });
 
       if (error) {
@@ -67,13 +68,14 @@ const Services: React.FC = () => {
 
     fetchRequests();
 
+    const currentId = user?.id || profile?.id;
     const channel = supabase
       .channel('service_requests-changes')
       .on('postgres_changes', { 
         event: '*', 
         schema: 'public', 
         table: 'service_requests',
-        filter: `user_id=eq.${user.id}`
+        filter: `user_id=eq.${currentId}`
       }, () => {
         fetchRequests();
       })
@@ -82,16 +84,16 @@ const Services: React.FC = () => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user]);
+  }, [user?.id, profile?.id]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!serviceType || !user) return;
+    if (!serviceType || (!user && !profile)) return;
     
     setSubmitting(true);
     try {
       await supabase.from('service_requests').insert({
-        user_id: user.id,
+        user_id: user?.id || profile?.id,
         service_type: serviceType,
         status: 'pending',
       });
@@ -106,13 +108,15 @@ const Services: React.FC = () => {
     }
   };
 
-  if (!user) {
+  if (!user && !profile) {
     return (
-      <div className="text-center py-20 bg-white rounded-3xl border border-slate-100 shadow-sm">
-        <ShieldCheck className="mx-auto text-blue-600 mb-6" size={64} />
-        <h2 className="text-3xl font-bold font-display">Identity Verification Required</h2>
-        <p className="text-slate-500 mt-4 max-w-md mx-auto">Please sign in to your citizen account to access the online service portal and track your requests.</p>
-        <button className="mt-8 bg-blue-600 text-white px-8 py-3 rounded-full font-bold hover:bg-blue-700 transition-all">Sign In to Continue</button>
+      <div className="text-center py-20 bg-white rounded-3xl border border-slate-100 shadow-sm relative overflow-hidden">
+        <div className="absolute inset-x-0 top-0 h-1 bg-brand-accent/20" />
+        <ShieldCheck className="mx-auto text-brand-accent mb-6" size={64} strokeWidth={1} />
+        <h2 className="text-3xl font-display uppercase tracking-tight text-brand-text-bright">Identity Verification Required</h2>
+        <p className="text-brand-text-dim mt-4 max-w-sm mx-auto uppercase tracking-widest text-[10px] font-black leading-relaxed">
+          Please authenticate with the municipal terminal to access the formal service registry and track your active filings.
+        </p>
       </div>
     );
   }
@@ -128,14 +132,12 @@ const Services: React.FC = () => {
           <p className="text-brand-text-dim text-sm uppercase tracking-widest">Administrative Resource Channel</p>
         </div>
 
-        {isCitizen && (
-          <button 
-            onClick={() => setShowModal(true)}
-            className="btn-primary flex items-center gap-2"
-          >
-            <Plus size={18} /> New Formal Request
-          </button>
-        )}
+        <button 
+          onClick={() => setShowModal(true)}
+          className="btn-primary flex items-center gap-2"
+        >
+          <Plus size={18} /> New Formal Request
+        </button>
       </div>
 
       <div className="grid lg:grid-cols-3 gap-10">

@@ -24,9 +24,6 @@ export const MUNICIPAL_BRANDING = {
   // Authorized Departments for Municipal Hub Features
   newsAuthorizedDepts: [
     "mayor",
-    "legislative",
-    "engineering",
-    "agriculture",
-    "mswdo"
+    "tourism"
   ]
 };

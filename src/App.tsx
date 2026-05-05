@@ -8,7 +8,7 @@ import { MUNICIPAL_BRANDING } from './constants';
 
 // Pages
 import LandingPage from './pages/LandingPage';
-import Announcements from './pages/Announcements';
+import NewsDetail from './pages/NewsDetail';
 import Services from './pages/Services';
 import Feedback from './pages/Feedback';
 import Directory from './pages/Directory';
@@ -101,7 +101,7 @@ const NavItem: React.FC<NavItemProps> = ({ label, to, dropdown }) => {
 };
 
 const Layout = ({ children }: { children: React.ReactNode }) => {
-  const { user, profile, isAdmin, loading, needsVerification } = useAuth();
+  const { user, profile, isAdmin, loading, needsVerification, verifyAccessKey, signOut } = useAuth();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [openSubMenu, setOpenSubMenu] = useState<number | null>(null);
@@ -114,13 +114,28 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
   const location = useLocation();
   const navigate = useNavigate();
   const profileRef = useRef<HTMLDivElement>(null);
+  const navigationTriggered = useRef(false);
+
+  // Handle successful identity verification and redirection
+  useEffect(() => {
+    if (verificationSuccess && profile && !navigationTriggered.current) {
+      navigationTriggered.current = true;
+      const targetPath = profile.role === 'admin' ? '/admin' : 
+                         profile.role === 'staff' ? '/staff' : '/';
+      
+      const timer = setTimeout(() => {
+        navigate(targetPath);
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [verificationSuccess, profile, navigate]);
 
   const confirmLogout = async () => {
     try {
       setIsLogoutModalOpen(false);
       setIsProfileOpen(false);
       setIsMenuOpen(false);
-      await supabase.auth.signOut();
+      await signOut();
       navigate('/');
     } catch (error) {
       console.error("Logout error:", error);
@@ -134,35 +149,22 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
 
   const handleVerifyKey = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !profile || !accessKeyInput) return;
+    if (!profile || !accessKeyInput) return;
 
     setIsVerifying(true);
     setVerificationError('');
 
     try {
-      if (profile?.access_key === accessKeyInput.trim()) {
-        // ... (existing update logic)
-        const { error: updateError } = await supabase
-          .from('users')
-          .update({
-            id: user.id,
-            is_claimed: true,
-            access_key: null
-          })
-          .eq('email', profile.email);
-        
-        if (updateError) throw updateError;
-        
+      const result = await verifyAccessKey(profile.email, accessKeyInput.trim());
+      
+      if (result.success) {
         setIsVerifying(false);
         setVerificationSuccess(true);
-        setTimeout(() => { window.location.reload(); }, 3000);
+        
+        // Use a micro-task to allow the verification UI to settle
+        // The actual navigation is now handled by the useEffect above
       } else {
-        // Advanced diagnostic: if profile is missing access_key in state, it's likely RLS
-        if (!profile?.access_key) {
-          setVerificationError('System synchronization error. Your identity record is restricted. Please inform the administrator to verify SQL RLS policies.');
-        } else {
-          setVerificationError('Invalid Access Key. Access denied by administrative protocol.');
-        }
+        setVerificationError(result.message);
       }
     } catch (error) {
       console.error("Verification error:", error);
@@ -333,7 +335,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
           <ul className="flex items-center gap-2 lg:gap-4" role="list">
 
             <li className="hidden sm:flex items-center gap-4">
-              {user ? (
+              {profile ? (
                 <div className="relative" ref={profileRef}>
                   <button 
                     onClick={() => setIsProfileOpen(!isProfileOpen)}
@@ -728,7 +730,6 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
           </div>
           <nav className="flex gap-6" aria-label="Footer links">
              <Link to="/feedback" className="nav-link text-[10px]">Contact</Link>
-             <Link to="/announcements" className="nav-link text-[10px]">Legal</Link>
              <Link to="/services" className="nav-link text-[10px]">Privacy</Link>
           </nav>
         </div>
@@ -745,10 +746,14 @@ export default function App() {
           <Routes>
             <Route path="/" element={<LandingPage />} />
             <Route path="/directory" element={<Directory />} />
+import NewsDetail from './pages/NewsDetail';
+
+// ... existing code ...
+
             <Route path="/barangays" element={<Barangays />} />
             <Route path="/about" element={<About />} />
             <Route path="/officials" element={<Officials />} />
-            <Route path="/announcements" element={<Announcements />} />
+            <Route path="/news/:id" element={<NewsDetail />} />
             <Route path="/services" element={<Services />} />
             <Route path="/feedback" element={<Feedback />} />
             <Route path="/directory/:deptId" element={<DepartmentDetail />} />

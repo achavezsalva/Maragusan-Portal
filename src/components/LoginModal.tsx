@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { Mail, Lock, User, ShieldCheck, X } from 'lucide-react';
+import { Mail, Lock, User, ShieldCheck, X, Shield, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { useAuth } from '../hooks/useAuth';
 
 interface LoginModalProps {
   isOpen: boolean;
@@ -9,6 +10,7 @@ interface LoginModalProps {
 }
 
 const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
+  const { initializeAccess } = useAuth();
   const [isRegistering, setIsRegistering] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -23,28 +25,20 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
 
     try {
       if (isRegistering) {
-        const { error: signUpError } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            data: {
-              full_name: name,
-            },
-          },
-        });
-        if (signUpError) throw signUpError;
-        alert('Registration successful! Please check your email for verification.');
+        // We keep registration for personnel if needed, but for now focus on the access flow
+        setError('Self-registration via password is currently restricted. Please use Municipal Identity initialization.');
       } else {
-        const { error: signInError } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
-        if (signInError) throw signInError;
+        const result = await initializeAccess(email);
+        if (!result.success) {
+          setError(result.message);
+          return;
+        }
+        // Success will trigger the App-level verification modal
+        onClose();
       }
-      onClose();
     } catch (err: any) {
-      console.error("Supabase Auth Error:", err.message);
-      setError(err.message);
+      console.error("Auth Error:", err.message);
+      setError('Identity Reconciliation System failure. Please contact administrator.');
     } finally {
       setLoading(false);
     }
@@ -147,7 +141,7 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
               )}
 
               <div className="space-y-2">
-                <label id="email-label" className="text-[10px] font-black uppercase tracking-widest text-brand-text-dim ml-1">Electronic Mail</label>
+                <label id="email-label" className="text-[10px] font-black uppercase tracking-widest text-brand-text-dim ml-1">Official Email Address</label>
                 <div className="relative">
                   <Mail className="absolute left-4 top-3.5 text-brand-text-dim" size={16} aria-hidden="true" />
                   <input
@@ -156,34 +150,54 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     className="w-full bg-slate-50 border border-brand-border rounded-lg py-3.5 pl-12 pr-4 text-sm focus:ring-2 focus:ring-brand-accent/20 focus:border-brand-accent transition-all outline-hidden"
-                    placeholder="name@government.ph"
+                    placeholder="registered-email@domain.com"
                     aria-labelledby="email-label"
                   />
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <label id="password-label" className="text-[10px] font-black uppercase tracking-widest text-brand-text-dim ml-1">Access Key</label>
-                <div className="relative">
-                  <Lock className="absolute left-4 top-3.5 text-brand-text-dim" size={16} aria-hidden="true" />
-                  <input
-                    type="password"
-                    required
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="w-full bg-slate-50 border border-brand-border rounded-lg py-3.5 pl-12 pr-4 text-sm focus:ring-2 focus:ring-brand-accent/20 focus:border-brand-accent transition-all outline-hidden"
-                    placeholder="••••••••"
-                    aria-labelledby="password-label"
-                  />
+              {!isRegistering && (
+                <div className="bg-brand-accent/5 p-4 rounded-xl border border-brand-accent/10">
+                   <p className="text-[9px] text-brand-text-dim uppercase tracking-wider leading-relaxed font-bold">
+                     Verification protocol will be triggered upon recognition of initialized email address.
+                   </p>
                 </div>
-              </div>
+              )}
+
+              {isRegistering && (
+                <div className="space-y-2">
+                  <label id="password-label" className="text-[10px] font-black uppercase tracking-widest text-brand-text-dim ml-1">Access Key</label>
+                  <div className="relative">
+                    <Lock className="absolute left-4 top-3.5 text-brand-text-dim" size={16} aria-hidden="true" />
+                    <input
+                      type="password"
+                      required
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="w-full bg-slate-50 border border-brand-border rounded-lg py-3.5 pl-12 pr-4 text-sm focus:ring-2 focus:ring-brand-accent/20 focus:border-brand-accent transition-all outline-hidden"
+                      placeholder="••••••••"
+                      aria-labelledby="password-label"
+                    />
+                  </div>
+                </div>
+              )}
 
               <button
                 type="submit"
                 disabled={loading}
-                className="btn-primary w-full py-4 uppercase tracking-[0.2em] font-bold mt-4 shadow-lg shadow-brand-accent/20"
+                className="btn-primary w-full py-4 uppercase tracking-[0.2em] font-bold mt-4 shadow-lg shadow-brand-accent/20 flex items-center justify-center gap-2"
               >
-                {loading ? 'Authenticating...' : (isRegistering ? 'Register' : 'Initialize Access')}
+                {loading ? (
+                  <>
+                    <RefreshCw size={14} className="animate-spin" />
+                    Processing...
+                  </>
+                ) : (
+                  <>
+                    <Shield size={16} />
+                    {isRegistering ? 'Register Profile' : 'Initialize Access'}
+                  </>
+                )}
               </button>
             </form>
 

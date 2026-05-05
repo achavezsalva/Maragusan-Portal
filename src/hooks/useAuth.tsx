@@ -6,7 +6,7 @@ export interface UserProfile {
   id: string;
   name: string;
   email: string;
-  role: 'admin' | 'staff' | 'citizen';
+  role: 'admin' | 'staff';
   department_id?: string;
   access_key?: string;
   is_claimed?: boolean;
@@ -19,8 +19,10 @@ interface AuthContextType {
   loading: boolean;
   isAdmin: boolean;
   isStaff: boolean;
-  isCitizen: boolean;
   needsVerification: boolean;
+  initializeAccess: (email: string) => Promise<{ success: boolean; message: string }>;
+  verifyAccessKey: (email: string, key: string) => Promise<{ success: boolean; message: string; profile?: UserProfile }>;
+  signOut: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -29,8 +31,10 @@ const AuthContext = createContext<AuthContextType>({
   loading: true,
   isAdmin: false,
   isStaff: false,
-  isCitizen: false,
   needsVerification: false,
+  initializeAccess: async () => ({ success: false, message: '' }),
+  verifyAccessKey: async () => ({ success: false, message: '' }),
+  signOut: async () => {},
 });
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -38,14 +42,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [needsVerification, setNeedsVerification] = useState(false);
+  const [pendingEmail, setPendingEmail] = useState<string | null>(null);
 
   useEffect(() => {
+    // Check for manual session
+    const savedManualProfile = localStorage.getItem('manual_profile');
+    if (savedManualProfile && !user) {
+      setProfile(JSON.parse(savedManualProfile));
+      setLoading(false);
+    }
+
     // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
       if (session?.user) {
+        setUser(session.user);
         fetchProfile(session.user.id, session.user.email ?? '');
-      } else {
+      } else if (!savedManualProfile) {
         setLoading(false);
       }
     });
@@ -57,8 +69,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (currentUser) {
         fetchProfile(currentUser.id, currentUser.email ?? '');
       } else {
-        setProfile(null);
-        setNeedsVerification(false);
+        // Only clear profile if there's no manual session
+        if (!localStorage.getItem('manual_profile')) {
+          setProfile(null);
+          setNeedsVerification(false);
+        }
         setLoading(false);
       }
     });
@@ -99,7 +114,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // B. No profile with UID, but profile with Email exists and is NOT claimed -> Verification required.
       // C. No profile with UID, but profile with Email exists and IS claimed -> This is a conflict (UID changed?), 
       //    but since email is unique, we should probably link the new UID to this profile.
-      // D. No profile found at all -> Create new citizen.
+      // D. No profile found at all -> Create new staff profile.
 
       if (profileById) {
         setProfile(profileById as UserProfile);
@@ -125,8 +140,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       } else {
         // Create new profile
-        const role = normalizedEmail === 'achavezsalva@gmail.com' ? 'admin' : 'citizen';
-        const defaultName = role === 'admin' ? 'System Administrator' : (user?.user_metadata?.full_name || 'Anonymous Citizen');
+        const role = normalizedEmail === 'achavezsalva@gmail.com' ? 'admin' : 'staff';
+        const defaultName = role === 'admin' ? 'System Administrator' : (user?.user_metadata?.full_name || 'Staff Personnel');
         const newProfile: Partial<UserProfile> = {
           id,
           name: defaultName,
@@ -163,14 +178,125 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const initializeAccess = async (email: string) => {
+    try {
+      const normalizedEmail = email.toLowerCase().trim();
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('email', normalizedEmail)
+        .single();
+
+      if (error || !data) {
+        // Fallback for primary admin initialization if record doesn't exist yet
+        if (normalizedEmail === 'achavezsalva@gmail.com') {
+          const adminProfile: UserProfile = {
+            id: 'admin-init',
+            name: 'System Administrator',
+            email: normalizedEmail,
+            role: 'admin',
+            access_key: 'ADMIN123', // Default initialization key
+            is_claimed: false,
+            created_at: new Date().toISOString()
+          };
+          setPendingEmail(normalizedEmail);
+          setProfile(adminProfile);
+          setNeedsVerification(true);
+          return { success: true, message: 'Administrative Identity recognized. Verification procedure initiated.' };
+        }
+        return { success: false, message: `Identity (${normalizedEmail}) not found in municipal records. Please verify registration status with administration.` };
+      }
+
+      // REMOVED: if (data.is_claimed && !user) ... 
+      // This allows users to use their access key even if they have a Google account (fallback login)
+
+      setPendingEmail(normalizedEmail);
+      setProfile(data as UserProfile);
+      setNeedsVerification(true);
+      return { success: true, message: 'Identity recognized. Verification required.' };
+    } catch (err) {
+      return { success: false, message: 'System error during initialization.' };
+    }
+  };
+
+  const verifyAccessKey = async (email: string, key: string) => {
+    try {
+      const normalizedEmail = email.toLowerCase().trim();
+      let sessionData: UserProfile | null = null;
+
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('email', normalizedEmail)
+        .eq('access_key', key)
+        .single();
+
+      if (error || !data) {
+        // Fallback check for primary admin if DB record missing or key mismatch in DB
+        if (normalizedEmail === 'achavezsalva@gmail.com' && key === 'ADMIN123') {
+          sessionData = {
+            id: 'admin-manual',
+            name: 'System Administrator',
+            email: normalizedEmail,
+            role: 'admin',
+            is_claimed: false,
+            created_at: new Date().toISOString()
+          };
+        } else {
+          return { success: false, message: 'Invalid Access Key. Synchronization failed.' };
+        }
+      } else {
+        sessionData = data as UserProfile;
+      }
+
+      // Record that the identity has been claimed/accessed
+      if (sessionData.id !== 'admin-manual') {
+        const updateData: any = { is_claimed: true };
+        if (user) {
+          updateData.id = user.id;
+          updateData.access_key = null;
+        }
+        
+        await supabase
+          .from('users')
+          .update(updateData)
+          .eq('email', normalizedEmail);
+          
+        // Update local session data for immediate UI feedback
+        sessionData.is_claimed = true;
+        sessionData.access_key = user ? undefined : sessionData.access_key;
+      }
+
+      setProfile(sessionData);
+      setNeedsVerification(false);
+      setPendingEmail(null);
+      
+      // Store manual session
+      localStorage.setItem('manual_profile', JSON.stringify(sessionData));
+
+      return { success: true, message: 'Access granted.', profile: sessionData };
+    } catch (err) {
+      return { success: false, message: 'System error during verification.' };
+    }
+  };
+
+  const signOut = async () => {
+    await supabase.auth.signOut();
+    localStorage.removeItem('manual_profile');
+    setProfile(null);
+    setUser(null);
+  };
+
   const value = {
     user,
     profile,
     loading,
-    isAdmin: (profile?.role === 'admin' && profile?.is_claimed) || user?.email?.toLowerCase() === 'achavezsalva@gmail.com',
-    isStaff: ((profile?.role === 'staff' || profile?.role === 'admin') && profile?.is_claimed) || user?.email?.toLowerCase() === 'achavezsalva@gmail.com',
-    isCitizen: profile?.role === 'citizen',
+    isAdmin: (profile?.role === 'admin' && (profile?.is_claimed || !user)) || user?.email?.toLowerCase() === 'achavezsalva@gmail.com',
+    isStaff: ((profile?.role === 'staff' || profile?.role === 'admin') && (profile?.is_claimed || !user)) || user?.email?.toLowerCase() === 'achavezsalva@gmail.com',
     needsVerification,
+    initializeAccess,
+    verifyAccessKey,
+    signOut
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

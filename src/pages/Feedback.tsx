@@ -39,7 +39,7 @@ const Feedback: React.FC = () => {
   });
 
   useEffect(() => {
-    if (!user) {
+    if (!profile && !user) {
       setLoading(false);
       return;
     }
@@ -51,7 +51,7 @@ const Feedback: React.FC = () => {
         .order('created_at', { ascending: false });
 
       if (!isAdmin) {
-        query = query.eq('user_id', user.id);
+        query = query.eq('user_id', user?.id || profile?.id);
       }
 
       const { data, error } = await query;
@@ -79,17 +79,17 @@ const Feedback: React.FC = () => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user, profile, isAdmin]);
+  }, [user?.id, profile?.id, isAdmin]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!text || !user) return;
+    if (!text || (!user && !profile)) return;
     
     setSubmitting(true);
     try {
       await supabase.from('feedback').insert({
-        user_id: user.id,
-        user_name: profile?.name || user.user_metadata?.full_name || user.email || 'Anonymous Citizen',
+        user_id: user?.id || profile?.id,
+        user_name: profile?.name || user?.user_metadata?.full_name || user?.email || 'Staff Personnel',
         message: text,
         status: 'received',
       });
@@ -164,7 +164,7 @@ const Feedback: React.FC = () => {
 
             <div className="space-y-1">
               <h2 className="text-2xl font-display tracking-tight">Formal Feedback Submission</h2>
-              <p className="text-brand-text-dim text-[11px] uppercase tracking-widest">Ensuring administrative accountability through direct citizen consultation.</p>
+              <p className="text-brand-text-dim text-[11px] uppercase tracking-widest">Ensuring administrative accountability through direct personnel consultation.</p>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-8">
@@ -177,12 +177,12 @@ const Feedback: React.FC = () => {
                   onChange={e => setText(e.target.value)}
                   className="w-full bg-brand-bg/50 border border-brand-border rounded-lg p-6 focus:ring-1 focus:ring-brand-accent text-sm outline-none transition-all"
                   placeholder="Draft your detailed observation or suggestion for municipal review..."
-                  disabled={!user}
+                  disabled={!user && !profile}
                   aria-labelledby="engagement-brief-label"
                 />
               </div>
 
-              {!user ? (
+              {!user && !profile ? (
                 <div className="bg-brand-accent/5 p-4 rounded-lg flex gap-3 text-brand-accent border border-brand-accent/20 text-[10px] uppercase font-black tracking-widest" role="alert">
                   <AlertCircle size={16} className="text-brand-accent flex-shrink-0" aria-hidden="true" />
                   Electronic Identity Required for Submission
@@ -225,7 +225,7 @@ const Feedback: React.FC = () => {
               <div className="space-y-4" aria-busy="true" aria-label="Loading history">
                 {[1,2,3].map(i => <div key={i} className="bg-brand-card h-24 rounded-xl border border-brand-border animate-pulse"></div>)}
               </div>
-            ) : !user ? (
+            ) : !user && !profile ? (
               <div className="text-center py-12 px-6 border border-dashed border-brand-border rounded-2xl">
                 <p className="text-brand-text-dim text-[10px] uppercase tracking-widest font-black italic">Verification needed for log access.</p>
               </div>
