@@ -228,7 +228,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .from('users')
         .select('*')
         .eq('email', normalizedEmail)
-        .eq('access_key', key)
+        .eq('access_key', key.trim())
         .single();
 
       if (error || !data) {

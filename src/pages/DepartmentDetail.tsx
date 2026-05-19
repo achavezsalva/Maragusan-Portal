@@ -8,7 +8,8 @@ import {
   Mail, 
   Briefcase, 
   ShieldCheck,
-  Building
+  Building,
+  CheckCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from '../lib/supabase';
@@ -25,30 +26,30 @@ const DepartmentDetail: React.FC = () => {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [deptForm, setDeptForm] = useState<DepartmentInfo | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
 
   const canEdit = isAdmin || (profile?.role === 'staff' && profile?.department_id === deptId);
   
-  useEffect(() => {
+  const fetchDept = async () => {
     if (!deptId) return;
+    const { data } = await supabase
+      .from('departments')
+      .select('*')
+      .eq('id', deptId)
+      .single();
 
-    const fetchDept = async () => {
-      const { data } = await supabase
-        .from('departments')
-        .select('*')
-        .eq('id', deptId)
-        .single();
-
-      if (data) {
-        setDepartment(data);
-      } else {
-        const staticDept = ALL_DEPT_DETAILS.find(d => d.id === deptId);
-        if (staticDept) {
-          setDepartment(staticDept);
-        }
+    if (data) {
+      setDepartment(data);
+    } else {
+      const staticDept = ALL_DEPT_DETAILS.find(d => d.id === deptId);
+      if (staticDept) {
+        setDepartment(staticDept);
       }
-      setLoading(false);
-    };
+    }
+    setLoading(false);
+  };
 
+  useEffect(() => {
     fetchDept();
 
     const channel = supabase
@@ -77,7 +78,12 @@ const DepartmentDetail: React.FC = () => {
         .upsert(deptForm);
 
       if (error) throw error;
+      
+      // Auto-synchronize: Fetch latest data immediately
+      await fetchDept();
+      
       setIsEditModalOpen(false);
+      setShowSuccessModal(true);
     } catch (error) {
       console.error("Error saving department:", error);
       alert("Failed to update department profile. Insufficient clearance.");
@@ -256,6 +262,44 @@ const DepartmentDetail: React.FC = () => {
         </div>
       </div>
       
+      {/* Success Modal */}
+      <AnimatePresence>
+        {showSuccessModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowSuccessModal(false)}
+              className="absolute inset-0 bg-brand-bg/80 backdrop-blur-md"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative w-full max-w-sm bg-brand-bg border border-brand-border rounded-[2.5rem] shadow-2xl p-10 flex flex-col items-center text-center space-y-6"
+            >
+              <div className="w-20 h-20 bg-green-500/10 rounded-full flex items-center justify-center text-green-500 border border-green-500/20">
+                <CheckCircle size={40} />
+              </div>
+              <div className="space-y-2">
+                <h2 className="text-2xl font-display text-brand-text-bright uppercase tracking-tight">Sync Successful</h2>
+                <p className="text-[10px] text-brand-text-dim uppercase tracking-[0.2em] font-black italic">Municipal Ledger Updated</p>
+              </div>
+              <p className="text-sm text-brand-text-bright/70 leading-relaxed italic">
+                The sector profile metadata has been successfully synchronized across the municipal network.
+              </p>
+              <button 
+                onClick={() => setShowSuccessModal(false)}
+                className="w-full py-4 bg-brand-accent text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-900 transition-all shadow-xl shadow-brand-accent/20"
+              >
+                Return to Sector Profile
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* Edit Modal */}
       <AnimatePresence>
         {isEditModalOpen && deptForm && (
@@ -292,6 +336,29 @@ const DepartmentDetail: React.FC = () => {
               </div>
 
               <div className="grid gap-6">
+                {isAdmin && (
+                  <div className="grid md:grid-cols-2 gap-6">
+                    <div className="space-y-4">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-brand-text-dim px-2">Official Name</label>
+                      <input 
+                        type="text"
+                        className="w-full bg-white/5 border border-brand-border rounded-xl px-5 py-3 text-sm font-bold text-brand-text-bright focus:border-brand-accent outline-none"
+                        value={deptForm.name}
+                        onChange={(e) => setDeptForm({...deptForm, name: e.target.value})}
+                      />
+                    </div>
+                    <div className="space-y-4">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-brand-text-dim px-2">Head of Office</label>
+                      <input 
+                        type="text"
+                        className="w-full bg-white/5 border border-brand-border rounded-xl px-5 py-3 text-sm font-bold text-brand-text-bright focus:border-brand-accent outline-none"
+                        value={deptForm.head}
+                        onChange={(e) => setDeptForm({...deptForm, head: e.target.value})}
+                      />
+                    </div>
+                  </div>
+                )}
+
                 <div className="space-y-4">
                   <label className="text-[10px] font-black uppercase tracking-widest text-brand-text-dim px-2">Department Mission / Summary</label>
                   <textarea 

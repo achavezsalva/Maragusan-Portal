@@ -21,6 +21,7 @@ import {
   AlertTriangle,
   CheckCircle,
   Copy,
+  Lock,
   Plus
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -47,6 +48,12 @@ const Admin: React.FC = () => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [isSyncConfirmModalOpen, setIsSyncConfirmModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const [passwordForm, setPasswordForm] = useState({
+    newPassword: '',
+    confirmPassword: ''
+  });
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
   const [registrationStatus, setRegistrationStatus] = useState<{
     show: boolean;
     success: boolean;
@@ -84,40 +91,40 @@ const Admin: React.FC = () => {
   // Form state for editing department
   const [deptForm, setDeptForm] = useState<DepartmentInfo | null>(null);
 
+  const fetchUsers = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      setUsers(data || []);
+    } catch (err) {
+      console.error("Failed to fetch users:", err);
+    }
+  };
+
+  const fetchDepts = async () => {
+    try {
+      const { data, error } = await supabase.from('departments').select('*');
+      if (error) throw error;
+      setDepartments(data || []);
+      
+      // Auto-sync if empty to prevent Foreign Key errors
+      if ((!data || data.length === 0) && profile?.role === 'admin') {
+        console.log("Auto-syncing departments...");
+        await supabase.from('departments').upsert(ALL_DEPT_DETAILS, { onConflict: 'id' });
+        const { data: syncedData } = await supabase.from('departments').select('*');
+        setDepartments(syncedData || []);
+      }
+    } catch (err) {
+      console.error("Failed to fetch depts:", err);
+    }
+  };
+
   useEffect(() => {
     if (!isAdmin) return;
-
-    const fetchUsers = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('users')
-          .select('*')
-          .order('created_at', { ascending: false });
-        
-        if (error) throw error;
-        setUsers(data || []);
-      } catch (err) {
-        console.error("Failed to fetch users:", err);
-      }
-    };
-
-    const fetchDepts = async () => {
-      try {
-        const { data, error } = await supabase.from('departments').select('*');
-        if (error) throw error;
-        setDepartments(data || []);
-        
-        // Auto-sync if empty to prevent Foreign Key errors
-        if ((!data || data.length === 0) && profile?.role === 'admin') {
-          console.log("Auto-syncing departments...");
-          await supabase.from('departments').upsert(ALL_DEPT_DETAILS, { onConflict: 'id' });
-          const { data: syncedData } = await supabase.from('departments').select('*');
-          setDepartments(syncedData || []);
-        }
-      } catch (err) {
-        console.error("Failed to fetch depts:", err);
-      }
-    };
 
     fetchUsers();
     fetchDepts();
@@ -140,7 +147,7 @@ const Admin: React.FC = () => {
       supabase.removeChannel(usersChannel);
       supabase.removeChannel(deptsChannel);
     };
-  }, [isAdmin]);
+  }, [isAdmin, profile]);
 
   const syncDepartments = async () => {
     setIsSyncing(true);
@@ -238,6 +245,8 @@ const Admin: React.FC = () => {
       
       if (error) throw error;
       
+      await fetchUsers();
+      
       setIsEditModalOpen(false);
       setSelectedUser(null);
     } catch (error: any) {
@@ -256,9 +265,17 @@ const Admin: React.FC = () => {
       
       if (error) throw error;
       
+      await fetchDepts();
+      
       setIsDeptEditModalOpen(false);
       setSelectedDept(null);
       setDeptForm(null);
+
+      setRegistrationStatus({
+        show: true,
+        success: true,
+        message: `Municipal Sector profile metadata has been successfully synchronized and updated in the master ledger.`
+      });
     } catch (error: any) {
       handleAdminError(error, "updating department");
     }
@@ -278,6 +295,8 @@ const Admin: React.FC = () => {
         .insert(deptForm);
       
       if (error) throw error;
+      
+      await fetchDepts();
       
       setRegistrationStatus({
         show: true,
@@ -302,6 +321,8 @@ const Admin: React.FC = () => {
         .eq('id', selectedDept.id);
       
       if (error) throw error;
+      
+      await fetchDepts();
       
       setIsDeptDeleteModalOpen(false);
       setIsDeptEditModalOpen(false);
@@ -328,11 +349,63 @@ const Admin: React.FC = () => {
       
       if (error) throw error;
         
+      await fetchUsers();
+
       setIsDeleteModalOpen(false);
       setIsEditModalOpen(false);
       setSelectedUser(null);
     } catch (error: any) {
       handleAdminError(error, "deleting user");
+    }
+  };
+
+  const handleUpdatePassword = async () => {
+    if (!selectedUser || !passwordForm.newPassword) return;
+    
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      alert("Passwords do not match.");
+      return;
+    }
+
+    if (passwordForm.newPassword.length < 6) {
+      alert("Password must be at least 6 characters.");
+      return;
+    }
+
+    setIsUpdatingPassword(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      const response = await fetch('/api/admin/update-password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token}`
+        },
+        body: JSON.stringify({
+          userId: selectedUser.id,
+          newPassword: passwordForm.newPassword.trim()
+        })
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "Failed to update password");
+      }
+
+      setRegistrationStatus({
+        show: true,
+        success: true,
+        message: result.message
+      });
+
+      setIsPasswordModalOpen(false);
+      setPasswordForm({ newPassword: '', confirmPassword: '' });
+    } catch (error: any) {
+      handleAdminError(error, "updating password");
+    } finally {
+      setIsUpdatingPassword(false);
     }
   };
 
@@ -351,7 +424,7 @@ const Admin: React.FC = () => {
           email: newEmail.toLowerCase().trim(),
           role: newRole,
           department_id: !newDept ? null : newDept,
-          access_key: newAccessKey,
+          access_key: newAccessKey.trim(),
           is_claimed: false,
         });
       
@@ -367,8 +440,7 @@ const Admin: React.FC = () => {
       });
 
       // Refresh list
-      const { data: updatedUsers } = await supabase.from('users').select('*').order('created_at', { ascending: false });
-      setUsers(updatedUsers || []);
+      await fetchUsers();
 
       // Reset form
       setNewName('');
@@ -433,8 +505,8 @@ const Admin: React.FC = () => {
                   <Users size={32} />
                 </div>
                 <div>
-                  <h1 className="text-4xl font-display uppercase tracking-tight text-brand-text-bright leading-none">Administration</h1>
-                  <p className="text-[10px] text-brand-text-dim uppercase tracking-[0.3em] font-black italic mt-2">Personnel & Sector Management Ledger</p>
+                  <h1 className="text-4xl font-display uppercase tracking-tight text-brand-text-bright leading-none">Command Center</h1>
+                  <p className="text-[10px] text-brand-text-dim uppercase tracking-[0.3em] font-black italic mt-2">Master Personnel & Sector Authority Ledger</p>
                 </div>
               </div>
               <div className="flex items-center gap-3">
@@ -499,10 +571,10 @@ const Admin: React.FC = () => {
               <Shield size={24} />
             </div>
             <div className="flex-1 space-y-1">
-              <h4 className="text-[10px] font-black uppercase tracking-widest text-brand-accent">Enrollment Protocol Notice</h4>
+              <h4 className="text-[10px] font-black uppercase tracking-widest text-brand-accent">Administrative Authority Clearance</h4>
               <p className="text-xs text-brand-text-bright leading-relaxed">
-                Personnel marked as <span className="text-yellow-500 font-bold uppercase">Pending</span> have been authorized but have not yet claimed their identity. 
-                <span className="font-bold"> Instructions:</span> Staff must log in using their matching Google Email, then enter the <span className="font-bold">Access Key</span> (visible in the ledger below) to finalize their clearance.
+                As a Master Administrator, you have full authority to override identity profiles, re-assign municipal sectors, and modify frontline service protocols.
+                <span className="font-bold"> Note:</span> Personnel marked as <span className="text-yellow-500 font-bold uppercase">Pending</span> are authorized identities awaiting claim.
               </p>
             </div>
             <div className="flex items-center gap-4 py-2 px-4 bg-white/5 rounded-xl border border-brand-border">
@@ -660,8 +732,8 @@ Stay safe.`;
                 <Building size={32} />
               </div>
               <div>
-                <h1 className="text-4xl font-display uppercase tracking-tight text-brand-text-bright leading-none">Sector Metadata</h1>
-                <p className="text-[10px] text-brand-text-dim uppercase tracking-[0.3em] font-black italic mt-2">Municipal Administrative Profiles</p>
+                <h1 className="text-4xl font-display uppercase tracking-tight text-brand-text-bright leading-none">Sector Authority</h1>
+                <p className="text-[10px] text-brand-text-dim uppercase tracking-[0.3em] font-black italic mt-2">Full Control of Municipal Administrative Profiles</p>
               </div>
             </div>
             <div className="flex items-center gap-4">
@@ -842,6 +914,16 @@ Stay safe.`;
               </div>
 
               <div className="flex gap-4 pt-4">
+                <button 
+                  type="button"
+                  onClick={() => {
+                    setPasswordForm({ newPassword: '', confirmPassword: '' });
+                    setIsPasswordModalOpen(true);
+                  }}
+                  className="px-6 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest text-brand-accent border border-brand-accent/20 hover:bg-brand-accent/5 transition-all flex items-center gap-2"
+                >
+                  <Lock size={14} /> Security
+                </button>
                 <button 
                   type="button"
                   onClick={handleDeleteUser}
@@ -1517,30 +1599,30 @@ Stay safe.`;
                   {!registrationStatus.success && registrationStatus.message.includes('Security Protocol') && (
                     <div className="mt-6 pt-6 border-t border-red-500/10 space-y-4">
                       <div className="flex flex-col gap-2">
-                        <label className="text-[9px] font-black uppercase tracking-widest text-red-500">Required SQL Patch</label>
+                        <label className="text-[9px] font-black uppercase tracking-widest text-red-500">Required Full Access SQL Patch</label>
                         <div className="relative group">
                           <pre className="bg-black/90 p-4 rounded-xl text-[10px] font-mono text-green-400 overflow-x-auto whitespace-pre-wrap leading-relaxed border border-red-500/20 text-left">
 {`-- RUN THIS IN SUPABASE SQL EDITOR
--- TO ALLOW ACCESS KEY ADMINS TO WORK
--- THIS PATCHES ALL CORE TABLES FOR PORTAL ACCESS
+-- TO GRANT MASTER ADMINISTRATIVE AUTHORITY
+-- ACROSS ALL MUNICIPAL SECTOR PROFILES
 
--- 1. Patch Users Table
+-- 1. Grant Unlimited Access to Users Profile
 DROP POLICY IF EXISTS "Manual Admin Access" ON users;
 CREATE POLICY "Manual Admin Access" ON users FOR ALL USING (true) WITH CHECK (true);
 
--- 2. Patch Departments Table
+-- 2. Grant Master Authority on Department Profiles (Sectors)
 DROP POLICY IF EXISTS "Manual Dept Access" ON departments;
 CREATE POLICY "Manual Dept Access" ON departments FOR ALL USING (true) WITH CHECK (true);
 
--- 3. Patch Announcements Table
+-- 3. Grant Authority for Public Announcements
 DROP POLICY IF EXISTS "Manual Ann Access" ON announcements;
 CREATE POLICY "Manual Ann Access" ON announcements FOR ALL USING (true) WITH CHECK (true);
 
--- 4. Patch Civic Outreach (Feedback) Table
+-- 4. Grant Authority for Feedback Management
 DROP POLICY IF EXISTS "Manual Feedback Access" ON feedback;
 CREATE POLICY "Manual Feedback Access" ON feedback FOR ALL USING (true) WITH CHECK (true);
 
--- 5. Patch Service Requests Table
+-- 5. Grant Authority for Service Request Oversight
 DROP POLICY IF EXISTS "Manual Service Access" ON service_requests;
 CREATE POLICY "Manual Service Access" ON service_requests FOR ALL USING (true) WITH CHECK (true);`}
                           </pre>
@@ -1604,6 +1686,72 @@ CREATE POLICY "Manual Service Access" ON service_requests FOR ALL USING (true) W
             </motion.div>
           </div>
         )}
+
+        {isPasswordModalOpen && selectedUser && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-6">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsPasswordModalOpen(false)}
+              className="absolute inset-0 bg-brand-bg/90 backdrop-blur-xl"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-md bg-brand-bg border border-brand-border rounded-[2.5rem] shadow-2xl p-10 space-y-8"
+            >
+              <div className="text-center space-y-2">
+                <div className="w-16 h-16 bg-brand-accent/20 rounded-2xl flex items-center justify-center text-brand-accent mx-auto border border-brand-accent/20">
+                  <Lock size={32} />
+                </div>
+                <h2 className="text-2xl font-display text-brand-text-bright uppercase tracking-tight">Security Override</h2>
+                <p className="text-[10px] text-brand-text-dim uppercase tracking-[0.2em] font-black italic">Resetting credentials for {selectedUser.name}</p>
+              </div>
+
+              <div className="space-y-6">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-brand-text-dim px-2">New Security Password</label>
+                  <input 
+                    type="password"
+                    placeholder="Enter new complex password..."
+                    className="w-full bg-white/5 border border-brand-border rounded-2xl px-6 py-4 text-sm font-bold text-brand-text-bright focus:border-brand-accent outline-none"
+                    value={passwordForm.newPassword}
+                    onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-brand-text-dim px-2">Confirm Identity Patch</label>
+                  <input 
+                    type="password"
+                    placeholder="Re-type password to verify..."
+                    className="w-full bg-white/5 border border-brand-border rounded-2xl px-6 py-4 text-sm font-bold text-brand-text-bright focus:border-brand-accent outline-none"
+                    value={passwordForm.confirmPassword}
+                    onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-4">
+                <button 
+                  onClick={() => setIsPasswordModalOpen(false)}
+                  className="flex-1 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest text-brand-text-dim border border-brand-border hover:bg-white/5 transition-all"
+                >
+                  Abort
+                </button>
+                <button 
+                  onClick={handleUpdatePassword}
+                  disabled={isUpdatingPassword}
+                  className="flex-1 py-4 bg-brand-accent text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-brand-accent/20 hover:bg-brand-accent/90 transition-all font-display disabled:opacity-50"
+                >
+                  {isUpdatingPassword ? 'Syncing...' : 'Seal Credentials'}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
       </AnimatePresence>
     </div>
   );

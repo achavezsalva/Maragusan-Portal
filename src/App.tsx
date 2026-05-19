@@ -228,19 +228,8 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
         { label: "Tourist Arrivals", to: '#' }
       ] 
     },
-    { 
-      label: 'Transparency', 
-      dropdown: [
-        { label: "Invitation To Bid", to: '#' },
-        { label: "Bayanihan Grant", to: '#' },
-        { label: "Local Government Support Fund", to: '#' },
-        { label: "Notices and Purchases", to: '#' },
-        { label: "Job Opportunity", to: '#' },
-      ] 
-    },
     { label: 'About Maragusan', to: '/about' },
-    { 
-      label: 'Contact Us', 
+    { label: 'Contact Us', 
       dropdown: [
         { label: "Feedback", to: '/feedback' }
       ] 
@@ -633,11 +622,11 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
                         </div>
                         <input 
                           required
-                          type="text"
-                          placeholder="ACCESS-KEY-XXXX"
-                          className="w-full bg-white/5 border-2 border-white/10 rounded-2xl pl-14 pr-6 py-5 text-center text-lg font-mono tracking-[0.3em] font-black text-brand-text-bright focus:border-brand-accent focus:bg-brand-accent/5 outline-none transition-all placeholder:text-white/10"
+                          type="password"
+                          placeholder="••••••••"
+                          className="w-full bg-white/5 border-2 border-white/10 rounded-2xl pl-14 pr-6 py-5 text-center text-lg font-mono tracking-[0.3em] font-black text-brand-text-bright focus:border-brand-accent focus:bg-brand-accent/5 outline-none transition-all placeholder:text-white/20"
                           value={accessKeyInput}
-                          onChange={(e) => setAccessKeyInput(e.target.value.toUpperCase())}
+                          onChange={(e) => setAccessKeyInput(e.target.value)}
                           autoFocus
                         />
                       </div>
@@ -746,10 +735,6 @@ export default function App() {
           <Routes>
             <Route path="/" element={<LandingPage />} />
             <Route path="/directory" element={<Directory />} />
-import NewsDetail from './pages/NewsDetail';
-
-// ... existing code ...
-
             <Route path="/barangays" element={<Barangays />} />
             <Route path="/about" element={<About />} />
             <Route path="/officials" element={<Officials />} />

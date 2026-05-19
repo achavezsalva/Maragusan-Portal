@@ -34,16 +34,17 @@ import { format } from 'date-fns';
 import { useAuth } from '../hooks/useAuth';
 
 const HERO_SLIDES = [
-  '/img/slide1.jpg.jpg',
-  '/img/slide2.jpg.jpg',
-  '/img/slide3.jpg.jpg',
-  '/img/slide4.jpg.jpg',
-  '/img/slide5.jpg.jpg',
-  '/img/slide6.jpg.jpg',
-  '/img/slide7.jpg.jpg',
-  '/img/slide8.jpg.jpg',
-  '/img/slide9.jpg.jpg',
-  '/img/slide10.jpg.jpg',
+  '/img/slide1.jpg',
+  '/img/slide2.jpg',
+  '/img/slide3.jpg',
+  '/img/slide4.jpg',
+  '/img/slide5.jpg',
+  '/img/slide6.jpg',
+  '/img/slide7.jpg',
+  '/img/slide8.jpg',
+  '/img/slide9.jpg',
+  '/img/slide10.jpg',
+  '/img/slide11.jpg',
 ];
 
 const LandingPage = () => {
@@ -179,7 +180,7 @@ const LandingPage = () => {
                <span className="text-[11px] font-black uppercase tracking-[0.4em] text-brand-accent">Maragusan News</span>
                <Star size={16} fill="#FF6B00" className="text-brand-accent" />
             </div>
-            <h2 className="text-5xl font-display tracking-tight text-slate-900 uppercase">Latest News</h2>
+            <h2 className="text-5xl font-display tracking-tight text-slate-900 uppercase">Latest Updates</h2>
             <div className="w-24 h-1 bg-brand-accent rounded-full opacity-60" />
             
             <button 
@@ -328,31 +329,6 @@ const LandingPage = () => {
           </div>
         </div>
       </section>
-
-      {/* Municipal Stats Section */}
-      <section className="px-6">
-        <div className="max-w-7xl mx-auto border-y border-brand-border py-20">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-12 md:gap-4 divide-x-0 md:divide-x divide-brand-border text-center">
-            <div className="space-y-2">
-              <div className="text-5xl md:text-6xl font-display text-brand-accent">24.</div>
-              <div className="text-[10px] font-black uppercase tracking-[0.2em] text-brand-text-dim">Official Departments</div>
-            </div>
-            <div className="space-y-2">
-              <div className="text-5xl md:text-6xl font-display text-brand-accent">100%</div>
-              <div className="text-[10px] font-black uppercase tracking-[0.2em] text-brand-text-dim">Data Transparency</div>
-            </div>
-            <div className="space-y-2">
-              <div className="text-5xl md:text-6xl font-display text-brand-accent">24/7.</div>
-              <div className="text-[10px] font-black uppercase tracking-[0.2em] text-brand-text-dim">Digital Access</div>
-            </div>
-            <div className="space-y-2">
-              <div className="text-5xl md:text-6xl font-display text-brand-accent">99.</div>
-              <div className="text-[10px] font-black uppercase tracking-[0.2em] text-brand-text-dim">Service Satisfaction</div>
-            </div>
-          </div>
-        </div>
-      </section>
-  
 
       {/* Contact Section */}
       <section className="px-6 py-20 flex flex-col items-center text-center space-y-12">

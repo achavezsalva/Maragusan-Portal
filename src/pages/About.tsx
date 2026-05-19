@@ -365,11 +365,9 @@ const About = () => {
             ))}
           </div>
         </section>
-
       </div>
-
       {/* Closing Statement */}
-      <section className="relative px-6 py-48 overflow-hidden bg-brand-bg border-t border-brand-border">
+      <section className="relative px-6 pt-20 pb-40 overflow-hidden bg-brand-bg border-t border-brand-border">
         <div className="absolute inset-0 z-0 opacity-30 grayscale mix-blend-overlay">
           <img src="/about-img/about-maragusan.png" className="w-full h-full object-cover" alt="Background" referrerPolicy="no-referrer" />
         </div>
