@@ -88,13 +88,15 @@ const StaffDashboard: React.FC = () => {
           .single();
 
         if (deptData) {
-          setDepartment(deptData);
-          setEditForm(deptData);
-          setCanPostMunicipal(!!(profile?.role === 'admin' || deptData.is_municipal_authorized));
+          const typedDept = deptData as DepartmentInfo;
+          setDepartment(typedDept);
+          setEditForm(typedDept);
+          setCanPostMunicipal(!!(profile?.role === 'admin' || typedDept.is_municipal_authorized));
         } else if (fallbackDept) {
-          setDepartment(fallbackDept);
-          setEditForm(fallbackDept);
-          setCanPostMunicipal(!!(profile?.role === 'admin' || fallbackDept.is_municipal_authorized));
+          const typedFallback = fallbackDept as DepartmentInfo;
+          setDepartment(typedFallback);
+          setEditForm(typedFallback);
+          setCanPostMunicipal(!!(profile?.role === 'admin' || typedFallback.is_municipal_authorized));
         }
 
         // 2. Fetch Staff

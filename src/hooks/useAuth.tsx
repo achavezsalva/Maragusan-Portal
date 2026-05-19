@@ -20,9 +20,11 @@ interface AuthContextType {
   isAdmin: boolean;
   isStaff: boolean;
   needsVerification: boolean;
+  isUnauthorized: boolean;
   initializeAccess: (email: string) => Promise<{ success: boolean; message: string }>;
   verifyAccessKey: (email: string, key: string) => Promise<{ success: boolean; message: string; profile?: UserProfile }>;
   signOut: () => Promise<void>;
+  resetUnauthorized: () => void;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -32,9 +34,11 @@ const AuthContext = createContext<AuthContextType>({
   isAdmin: false,
   isStaff: false,
   needsVerification: false,
+  isUnauthorized: false,
   initializeAccess: async () => ({ success: false, message: '' }),
   verifyAccessKey: async () => ({ success: false, message: '' }),
   signOut: async () => {},
+  resetUnauthorized: () => {},
 });
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -42,6 +46,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [needsVerification, setNeedsVerification] = useState(false);
+  const [isUnauthorized, setIsUnauthorized] = useState(false);
   const [pendingEmail, setPendingEmail] = useState<string | null>(null);
 
   useEffect(() => {
@@ -139,35 +144,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setNeedsVerification(false);
         }
       } else {
-        // Create new profile
-        const role = normalizedEmail === 'achavezsalva@gmail.com' ? 'admin' : 'staff';
-        const defaultName = role === 'admin' ? 'System Administrator' : (user?.user_metadata?.full_name || 'Staff Personnel');
-        const newProfile: Partial<UserProfile> = {
-          id,
-          name: defaultName,
-          email: normalizedEmail,
-          role,
-          is_claimed: true
-        };
+        // Only allow auto-creation for the master admin email
+        if (normalizedEmail === 'achavezsalva@gmail.com') {
+          const role = 'admin';
+          const defaultName = 'System Administrator';
+          const newProfile: Partial<UserProfile> = {
+            id,
+            name: defaultName,
+            email: normalizedEmail,
+            role,
+            is_claimed: true
+          };
 
-        const { data: createdProfile, error: createError } = await supabase
-          .from('users')
-          .insert(newProfile)
-          .select()
-          .single();
+          const { data: createdProfile, error: createError } = await supabase
+            .from('users')
+            .insert(newProfile)
+            .select()
+            .single();
 
-        if (createError) {
-          if (createError.code === '23505') { 
-            // Email already exists! This is a pre-registered user that RLS prevents us from seeing.
-            setNeedsVerification(true);
-            setProfile({ email: normalizedEmail, role: 'staff', name: user?.user_metadata?.full_name || 'Staff' } as UserProfile);
-          } else {
-            console.error("Error creating profile:", createError);
+          if (createError) {
+            console.error("Error creating admin profile:", createError);
             setProfile({ ...newProfile, id, created_at: new Date().toISOString() } as UserProfile);
+            setNeedsVerification(false);
+          } else {
+            setProfile(createdProfile as UserProfile);
             setNeedsVerification(false);
           }
         } else {
-          setProfile(createdProfile as UserProfile);
+          // NOT AUTHORIZED: This is a new user with no pre-existing profile
+          setIsUnauthorized(true);
+          setProfile(null);
           setNeedsVerification(false);
         }
       }
@@ -285,6 +291,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.removeItem('manual_profile');
     setProfile(null);
     setUser(null);
+    setIsUnauthorized(false);
+  };
+
+  const resetUnauthorized = () => {
+    setIsUnauthorized(false);
+    signOut();
   };
 
   const value = {
@@ -294,9 +306,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     isAdmin: (profile?.role === 'admin' && (profile?.is_claimed || !user)) || user?.email?.toLowerCase() === 'achavezsalva@gmail.com',
     isStaff: ((profile?.role === 'staff' || profile?.role === 'admin') && (profile?.is_claimed || !user)) || user?.email?.toLowerCase() === 'achavezsalva@gmail.com',
     needsVerification,
+    isUnauthorized,
     initializeAccess,
     verifyAccessKey,
-    signOut
+    signOut,
+    resetUnauthorized
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

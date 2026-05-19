@@ -101,7 +101,7 @@ const NavItem: React.FC<NavItemProps> = ({ label, to, dropdown }) => {
 };
 
 const Layout = ({ children }: { children: React.ReactNode }) => {
-  const { user, profile, isAdmin, loading, needsVerification, verifyAccessKey, signOut } = useAuth();
+  const { user, profile, isAdmin, loading, needsVerification, isUnauthorized, verifyAccessKey, signOut, resetUnauthorized } = useAuth();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [openSubMenu, setOpenSubMenu] = useState<number | null>(null);
@@ -481,6 +481,55 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
         )}
         </AnimatePresence>
         <LoginModal isOpen={isLoginModalOpen} onClose={() => setIsLoginModalOpen(false)} />
+        
+        {/* Unauthorized Access Modal */}
+        <AnimatePresence>
+          {isUnauthorized && (
+            <div className="fixed inset-0 z-[200] flex items-center justify-center p-6 bg-brand-bg/95 backdrop-blur-3xl">
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                className="relative w-full max-w-lg bg-brand-card border-2 border-red-500/30 rounded-[3rem] shadow-[0_0_100px_rgba(220,38,38,0.15)] p-12 space-y-10 overflow-hidden"
+              >
+                {/* Decorative background element */}
+                <div className="absolute -top-24 -right-24 w-48 h-48 bg-red-600/5 rounded-full blur-3xl" />
+                <div className="absolute -bottom-24 -left-24 w-48 h-48 bg-red-600/5 rounded-full blur-3xl" />
+
+                <div className="flex flex-col items-center text-center space-y-8 relative z-10">
+                  <div className="w-24 h-24 bg-red-500/10 rounded-[2rem] flex items-center justify-center text-red-500 border-2 border-red-500/20 shadow-xl shadow-red-500/10 rotate-3">
+                    <Shield size={48} />
+                  </div>
+                  <div className="space-y-4">
+                    <h2 className="text-3xl font-display text-brand-text-bright uppercase tracking-tight leading-none italic">Clearance Denied</h2>
+                    <p className="text-[10px] text-red-500 uppercase tracking-[0.4em] font-black">Identity Not Recognized</p>
+                  </div>
+                  
+                  <div className="bg-red-500/5 p-8 rounded-3xl border border-red-500/10 w-full text-center space-y-4">
+                    <p className="text-sm font-medium text-brand-text-bright leading-relaxed">
+                      Administrative Credentials Required. Your current identity is not registered in the Municipal Personnel Ledger.
+                    </p>
+                    <p className="text-[10px] text-brand-text-dim uppercase tracking-widest leading-relaxed font-bold">
+                      If you are an authorized employee, please contact the System Administrator to initialize your portal clearance. Public access is restricted to verified personnel only.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-4 relative z-10">
+                  <button 
+                    onClick={resetUnauthorized}
+                    className="w-full py-5 rounded-2xl bg-brand-accent text-white text-[11px] font-black uppercase tracking-widest shadow-xl hover:bg-blue-900 transition-all font-display flex items-center justify-center gap-3"
+                  >
+                    Return to Public Portal
+                  </button>
+                  <div className="text-center">
+                    <span className="text-[9px] text-brand-text-dim uppercase tracking-widest font-bold">Authenticated as: {user?.email}</span>
+                  </div>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
 
         {/* Logout Confirmation Modal */}
         <AnimatePresence>
