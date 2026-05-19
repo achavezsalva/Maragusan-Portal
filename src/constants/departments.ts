@@ -9,6 +9,7 @@ export interface DepartmentInfo {
     location: string;
   };
   services: string[];
+  is_municipal_authorized?: boolean;
 }
 
 export const DEPARTMENT_CATEGORIES = [

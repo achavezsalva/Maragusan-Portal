@@ -34,6 +34,7 @@ const StaffDashboard: React.FC = () => {
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [editForm, setEditForm] = useState<DepartmentInfo | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [canPostMunicipal, setCanPostMunicipal] = useState(false);
   const [saveStatus, setSaveStatus] = useState<{show: boolean, success: boolean, message: string}>({
     show: false,
     success: false,
@@ -42,6 +43,8 @@ const StaffDashboard: React.FC = () => {
 
   // Announcement State
   const [showAnnModal, setShowAnnModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [annToDelete, setAnnToDelete] = useState<string | null>(null);
   const [annTitle, setAnnTitle] = useState('');
   const [annContent, setAnnContent] = useState('');
   const [annImageUrl, setAnnImageUrl] = useState('');
@@ -49,8 +52,7 @@ const StaffDashboard: React.FC = () => {
   const [isAnnMunicipal, setIsAnnMunicipal] = useState(false);
   const [editingAnnId, setEditingAnnId] = useState<string | null>(null);
 
-  const canPostMunicipal = !!(profile?.role === 'admin' || (profile?.department_id && MUNICIPAL_BRANDING.newsAuthorizedDepts.includes(profile.department_id)));
-
+  // const canPostMunicipal = ... removed ...
   const sectorId = profile?.department_id;
 
   useEffect(() => {
@@ -88,9 +90,11 @@ const StaffDashboard: React.FC = () => {
         if (deptData) {
           setDepartment(deptData);
           setEditForm(deptData);
+          setCanPostMunicipal(!!(profile?.role === 'admin' || deptData.is_municipal_authorized));
         } else if (fallbackDept) {
           setDepartment(fallbackDept);
           setEditForm(fallbackDept);
+          setCanPostMunicipal(!!(profile?.role === 'admin' || fallbackDept.is_municipal_authorized));
         }
 
         // 2. Fetch Staff
@@ -107,8 +111,7 @@ const StaffDashboard: React.FC = () => {
           .from('announcements')
           .select('*')
           .eq('department_id', targetId)
-          .order('created_at', { ascending: false })
-          .limit(5);
+          .order('created_at', { ascending: false });
         
         setAnnouncements(annData || []);
         setIsLoading(false);
@@ -163,6 +166,16 @@ const StaffDashboard: React.FC = () => {
       if (annChannel) supabase.removeChannel(annChannel);
     };
   }, [profile?.id, user?.id, isStaff, loading]);
+
+  // Pagination Logic
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 5;
+  const totalPages = Math.ceil(announcements.length / itemsPerPage);
+  
+  const paginatedAnnouncements = announcements.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
 
   const handleUpdateSector = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -247,17 +260,26 @@ const StaffDashboard: React.FC = () => {
   };
 
   const handleDeleteAnn = async (id: string) => {
-    if (!window.confirm('Terminate this publication record?')) return;
+    setAnnToDelete(id);
+    setShowDeleteModal(true);
+  };
+
+  const confirmDeleteAnn = async () => {
+    if (!annToDelete) return;
     try {
-      await supabase.from('announcements').delete().eq('id', id);
+      await supabase.from('announcements').delete().eq('id', annToDelete);
       setSaveStatus({
         show: true,
         success: true,
         message: 'Publication record terminated.'
       });
+      setShowDeleteModal(false);
+      setAnnToDelete(null);
       setTimeout(() => setSaveStatus({ ...saveStatus, show: false }), 3000);
     } catch (err) {
       console.error("Delete error:", err);
+      setShowDeleteModal(false);
+      setAnnToDelete(null);
     }
   };
 
@@ -332,7 +354,7 @@ const StaffDashboard: React.FC = () => {
             <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest bg-black/10 px-4 py-2 rounded-xl backdrop-blur-sm text-white border border-white/10">
               <Shield size={14} /> Authorized Personnel Dashboard
             </div>
-            {profile?.department_id && MUNICIPAL_BRANDING.newsAuthorizedDepts.includes(profile.department_id) && (
+            {canPostMunicipal && (
               <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest bg-amber-400 text-brand-bg px-4 py-2 rounded-xl shadow-lg border border-amber-300 animate-pulse">
                 <Globe size={14} /> Municipal Hub Access
               </div>
@@ -519,7 +541,7 @@ const StaffDashboard: React.FC = () => {
             </div>
 
             <div className="grid gap-4">
-              {announcements.map((ann) => (
+              {paginatedAnnouncements.map((ann) => (
                 <div key={ann.id} className="p-6 bg-white/5 border border-brand-border rounded-[2rem] flex flex-col md:flex-row md:items-center justify-between gap-6 hover:bg-white/10 transition-all border-l-4 border-l-brand-accent">
                   <div className="space-y-2 max-w-2xl">
                     <h3 className="text-lg font-display text-brand-text-bright tracking-tight uppercase leading-none">{ann.title}</h3>
@@ -558,6 +580,28 @@ const StaffDashboard: React.FC = () => {
               {announcements.length === 0 && (
                 <div className="py-20 text-center border-2 border-dashed border-brand-border rounded-[2.5rem]">
                   <p className="text-[10px] font-black uppercase tracking-widest text-brand-text-dim">No record of sector communications found.</p>
+                </div>
+              )}
+              
+              {totalPages > 1 && (
+                <div className="flex items-center justify-center gap-4 mt-6">
+                  <button
+                    disabled={currentPage === 1}
+                    onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                    className="px-6 py-3 bg-white/5 border border-brand-border rounded-xl text-[10px] font-black uppercase tracking-widest hover:border-brand-accent disabled:opacity-50"
+                  >
+                    Previous
+                  </button>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-brand-text-dim">
+                    Page {currentPage} of {totalPages}
+                  </span>
+                  <button
+                    disabled={currentPage === totalPages}
+                    onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                    className="px-6 py-3 bg-white/5 border border-brand-border rounded-xl text-[10px] font-black uppercase tracking-widest hover:border-brand-accent disabled:opacity-50"
+                  >
+                    Next
+                  </button>
                 </div>
               )}
             </div>
@@ -724,6 +768,52 @@ const StaffDashboard: React.FC = () => {
         )}
       </AnimatePresence>
 
+      {/* Delete Confirmation Modal */}
+      <AnimatePresence>
+        {showDeleteModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowDeleteModal(false)}
+              className="absolute inset-0 bg-brand-bg/80 backdrop-blur-md"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-sm bg-brand-bg border border-brand-border rounded-[2.5rem] shadow-2xl p-10 space-y-8"
+            >
+              <div className="text-center space-y-4">
+                <div className="w-16 h-16 bg-red-500/10 text-red-500 rounded-full flex items-center justify-center mx-auto">
+                    <AlertTriangle size={32} />
+                </div>
+                <h2 className="text-xl font-display text-brand-text-bright uppercase tracking-tight">Confirm Deletion</h2>
+                <p className="text-[10px] text-brand-text-dim uppercase tracking-[0.2em] font-black italic">
+                    Are you sure you want to terminate this publication record? This action cannot be undone.
+                </p>
+              </div>
+              
+              <div className="flex gap-4">
+                <button 
+                  onClick={() => setShowDeleteModal(false)}
+                  className="flex-1 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest text-brand-text-dim border border-brand-border hover:bg-white/5 transition-all"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={confirmDeleteAnn}
+                  className="flex-1 py-4 rounded-2xl bg-red-500 text-white text-[10px] font-black uppercase tracking-widest shadow-xl shadow-red-500/20 hover:bg-red-600 transition-all font-display flex items-center justify-center gap-2"
+                >
+                  Confirm Delete
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* Publication Modal */}
       <AnimatePresence>
         {showAnnModal && (
@@ -732,7 +822,6 @@ const StaffDashboard: React.FC = () => {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              onClick={() => setShowAnnModal(false)}
               className="absolute inset-0 bg-brand-bg/80 backdrop-blur-md"
             />
             <motion.div 

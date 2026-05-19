@@ -22,7 +22,10 @@ import {
   CheckCircle,
   Copy,
   Lock,
-  Plus
+  Plus,
+  Megaphone,
+  Globe,
+  Send
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from '../lib/supabase';
@@ -30,7 +33,7 @@ import { useAuth, UserProfile } from '../hooks/useAuth';
 import { ALL_DEPARTMENTS, ALL_DEPT_DETAILS, DepartmentInfo } from '../constants/departments';
 
 const Admin: React.FC = () => {
-  const { user, profile, isAdmin } = useAuth();
+  const { user, profile, isAdmin, loading } = useAuth();
   const [activeTab, setActiveTab] = useState<'personnel' | 'departments'>('personnel');
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [departments, setDepartments] = useState<DepartmentInfo[]>([]);
@@ -48,12 +51,15 @@ const Admin: React.FC = () => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [isSyncConfirmModalOpen, setIsSyncConfirmModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
-  const [passwordForm, setPasswordForm] = useState({
-    newPassword: '',
-    confirmPassword: ''
-  });
-  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
+  // Announcement State
+  const [showAnnModal, setShowAnnModal] = useState(false);
+  const [annTitle, setAnnTitle] = useState('');
+  const [annContent, setAnnContent] = useState('');
+  const [annImageUrl, setAnnImageUrl] = useState('');
+  const [annImages, setAnnImages] = useState<string[]>([]);
+  const [isAnnMunicipal, setIsAnnMunicipal] = useState(false);
+  const [editingAnnId, setEditingAnnId] = useState<string | null>(null);
+  const [postDeptId, setPostDeptId] = useState('');
   const [registrationStatus, setRegistrationStatus] = useState<{
     show: boolean;
     success: boolean;
@@ -72,6 +78,14 @@ const Admin: React.FC = () => {
   const [newRole, setNewRole] = useState<UserProfile['role']>('staff');
   const [newDept, setNewDept] = useState('');
   const [newAccessKey, setNewAccessKey] = useState('');
+  
+  // Password State
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
+  const [passwordForm, setPasswordForm] = useState({ newPassword: '', confirmPassword: '' });
+
+  // Form state for editing department
+  const [deptForm, setDeptForm] = useState<DepartmentInfo | null>(null);
 
   const generateAccessKey = () => {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -87,9 +101,10 @@ const Admin: React.FC = () => {
       generateAccessKey();
     }
   }, [isAddModalOpen, newRole]);
-
-  // Form state for editing department
-  const [deptForm, setDeptForm] = useState<DepartmentInfo | null>(null);
+  
+  if (loading) {
+    return <div className="text-white min-h-screen flex items-center justify-center">Loading Admin...</div>;
+  }
 
   const fetchUsers = async () => {
     try {
@@ -406,6 +421,58 @@ const Admin: React.FC = () => {
       handleAdminError(error, "updating password");
     } finally {
       setIsUpdatingPassword(false);
+    }
+  };
+
+  const handleSaveAnnouncement = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!annTitle || !annContent || !postDeptId) return;
+
+    try {
+      if (editingAnnId) {
+        await supabase
+          .from('announcements')
+          .update({
+            title: annTitle,
+            content: annContent,
+            image_url: annImageUrl,
+            images: annImages,
+            is_municipal: isAnnMunicipal,
+            department_id: postDeptId
+          })
+          .eq('id', editingAnnId);
+      } else {
+        await supabase
+          .from('announcements')
+          .insert({
+            title: annTitle,
+            content: annContent,
+            image_url: annImageUrl,
+            images: annImages,
+            department_id: postDeptId,
+            author_id: user?.id,
+            is_municipal: isAnnMunicipal
+          });
+      }
+      
+      setAnnTitle('');
+      setAnnContent('');
+      setAnnImageUrl('');
+      setAnnImages([]);
+      setIsAnnMunicipal(false);
+      setEditingAnnId(null);
+      setPostDeptId('');
+      setShowAnnModal(false);
+      
+      setRegistrationStatus({
+        show: true,
+        success: true,
+        message: 'Publication synchronized successfully.'
+      });
+      setTimeout(() => setRegistrationStatus(prev => ({ ...prev, show: false })), 3000);
+    } catch (err) {
+      console.error("Ann save error:", err);
+      handleAdminError(err, "saving publication");
     }
   };
 
@@ -758,6 +825,20 @@ Stay safe.`;
                 <Plus size={18} /> New Sector
               </button>
               <button 
+                onClick={() => {
+                  setEditingAnnId(null);
+                  setAnnTitle('');
+                  setAnnContent('');
+                  setAnnImageUrl('');
+                  setAnnImages([]);
+                  setIsAnnMunicipal(false);
+                  setShowAnnModal(true);
+                }}
+                className="flex items-center gap-3 bg-white/5 border border-brand-border text-brand-text-dim px-8 py-4 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:text-brand-accent hover:border-brand-accent transition-all"
+              >
+                <Megaphone size={18} /> Create Publication
+              </button>
+              <button 
                 onClick={() => setIsSyncConfirmModalOpen(true)}
                 disabled={isSyncing}
                 className="flex items-center gap-3 bg-white/5 border border-brand-border text-brand-text-dim px-8 py-4 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:text-brand-accent hover:border-brand-accent transition-all disabled:opacity-50"
@@ -951,6 +1032,171 @@ Stay safe.`;
             </motion.div>
           </div>
         )}
+      </AnimatePresence>{/* Publication Modal */}
+      <AnimatePresence>
+        {showAnnModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-brand-bg/80 backdrop-blur-md"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-2xl bg-brand-bg border border-brand-border rounded-[2.5rem] shadow-2xl p-10 space-y-8 overflow-y-auto max-h-[90vh] custom-scrollbar"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-6">
+                  <div className="w-14 h-14 bg-brand-accent/10 rounded-2xl flex items-center justify-center text-brand-accent border border-brand-accent/20">
+                    <Megaphone size={24} />
+                  </div>
+                  <div>
+                    <h2 className="text-[10px] font-black uppercase tracking-[0.4em] text-brand-accent">Communication Protocol</h2>
+                    <p className="text-2xl font-display text-brand-text-bright leading-none mt-1">
+                      {editingAnnId ? 'Curate Publication' : 'New Publication Briefing'}
+                    </p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setShowAnnModal(false)}
+                  className="p-3 bg-white/5 rounded-full hover:bg-white/10 transition-all"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveAnnouncement} className="space-y-6">
+                <div className="space-y-4">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-brand-text-dim px-2">Select Sector</label>
+                  <select 
+                    required
+                    className="w-full bg-white/5 border border-brand-border rounded-xl px-5 py-4 text-sm font-bold text-brand-text-bright focus:border-brand-accent outline-none"
+                    value={postDeptId}
+                    onChange={(e) => setPostDeptId(e.target.value)}
+                  >
+                    <option value="">Select a sector...</option>
+                    {departments.map(dept => (
+                      <option key={dept.id} value={dept.id}>{dept.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-4">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-brand-text-dim px-2">Heading</label>
+                  <input 
+                    type="text"
+                    required
+                    className="w-full bg-white/5 border border-brand-border rounded-xl px-5 py-4 text-base font-bold text-brand-text-bright focus:border-brand-accent outline-none"
+                    placeholder="Enter briefing title..."
+                    value={annTitle}
+                    onChange={(e) => setAnnTitle(e.target.value)}
+                  />
+                </div>
+
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center px-2">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-brand-text-dim">Publication Gallery</label>
+                    <button 
+                      type="button"
+                      onClick={() => setAnnImages([...annImages, ''])}
+                      className="text-[9px] font-black uppercase tracking-widest text-brand-accent hover:underline"
+                    >
+                      + Add Image URL
+                    </button>
+                  </div>
+                  
+                  <div className="space-y-3">
+                    <div className="relative">
+                      <input 
+                        type="url"
+                        className="w-full bg-white/5 border border-brand-border rounded-xl px-5 py-4 text-sm font-bold text-brand-text-bright focus:border-brand-accent outline-none pr-12"
+                        placeholder="Primary Cover Image URL..."
+                        value={annImageUrl}
+                        onChange={(e) => setAnnImageUrl(e.target.value)}
+                      />
+                      <div className="absolute right-4 top-1/2 -translate-y-1/2 text-[8px] font-black uppercase tracking-widest text-brand-accent bg-brand-accent/10 px-2 py-1 rounded border border-brand-accent/20">COVER</div>
+                    </div>
+
+                    {annImages.map((url, idx) => (
+                      <div key={idx} className="flex gap-2">
+                        <input 
+                          type="url"
+                          className="flex-1 bg-white/5 border border-brand-border rounded-xl px-5 py-3 text-xs font-medium text-brand-text-bright focus:border-brand-accent outline-none"
+                          placeholder={`Gallery Image #${idx + 1} URL...`}
+                          value={url}
+                          onChange={(e) => {
+                            const newImages = [...annImages];
+                            newImages[idx] = e.target.value;
+                            setAnnImages(newImages);
+                          }}
+                        />
+                        <button 
+                          type="button"
+                          onClick={() => setAnnImages(annImages.filter((_, i) => i !== idx))}
+                          className="p-2 text-red-400 hover:bg-red-500/10 rounded-lg transition-all"
+                        >
+                          <X size={16} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="p-6 bg-brand-accent/5 border border-brand-accent/20 rounded-2xl flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-brand-accent text-white rounded-lg flex items-center justify-center shadow-lg shadow-brand-accent/20">
+                      <Globe size={20} />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-black uppercase tracking-widest text-brand-text-bright">Municipal Publication Hub</h4>
+                      <p className="text-[9px] text-brand-text-dim uppercase tracking-widest font-black italic">Promote to home portal feed</p>
+                    </div>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      checked={isAnnMunicipal}
+                      onChange={(e) => setIsAnnMunicipal(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-accent"></div>
+                  </label>
+                </div>
+
+                <div className="space-y-4">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-brand-text-dim px-2">Draft Content</label>
+                  <textarea 
+                    rows={8}
+                    required
+                    className="w-full bg-white/5 border border-brand-border rounded-xl px-5 py-4 text-sm font-medium text-brand-text-bright focus:border-brand-accent outline-none leading-relaxed"
+                    placeholder="Provide full disclosure of municipal update..."
+                    value={annContent}
+                    onChange={(e) => setAnnContent(e.target.value)}
+                  />
+                </div>
+
+                <div className="flex gap-4 pt-6">
+                  <button 
+                    type="button"
+                    onClick={() => setShowAnnModal(false)}
+                    className="flex-1 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest text-brand-text-dim border border-brand-border hover:bg-white/5 transition-all"
+                  >
+                    Discard Changes
+                  </button>
+                  <button 
+                    type="submit"
+                    className="flex-1 py-4 rounded-2xl bg-brand-accent text-white text-[10px] font-black uppercase tracking-widest shadow-xl shadow-brand-accent/20 hover:bg-brand-accent/90 transition-all font-display flex items-center justify-center gap-3"
+                  >
+                    <Send size={16} /> Publish Record
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
       </AnimatePresence>
 
       {/* Dept Edit Modal */}
@@ -988,10 +1234,11 @@ Stay safe.`;
                 </button>
               </div>
 
-              <div className="grid gap-6">
+              <form onSubmit={(e) => { e.preventDefault(); handleUpdateDept(); }} className="grid gap-6">
                 <div className="space-y-4">
                   <label className="text-[10px] font-black uppercase tracking-widest text-brand-text-dim px-2">Sector Name</label>
                   <input 
+                    required
                     type="text"
                     className="w-full bg-white/5 border border-brand-border rounded-xl px-5 py-3 text-sm font-bold text-brand-text-bright focus:border-brand-accent outline-none"
                     value={deptForm.name}
@@ -1003,6 +1250,7 @@ Stay safe.`;
                   <div className="space-y-4">
                     <label className="text-[10px] font-black uppercase tracking-widest text-brand-text-dim px-2">Head of Office</label>
                     <input 
+                      required
                       type="text"
                       className="w-full bg-white/5 border border-brand-border rounded-xl px-5 py-3 text-sm font-bold text-brand-text-bright focus:border-brand-accent outline-none"
                       value={deptForm.head}
@@ -1012,6 +1260,7 @@ Stay safe.`;
                   <div className="space-y-4">
                     <label className="text-[10px] font-black uppercase tracking-widest text-brand-text-dim px-2">Official Email</label>
                     <input 
+                      required
                       type="email"
                       className="w-full bg-white/5 border border-brand-border rounded-xl px-5 py-3 text-sm font-bold text-brand-text-bright focus:border-brand-accent outline-none"
                       value={deptForm.contact.email}
@@ -1067,7 +1316,7 @@ Stay safe.`;
                       <div key={sidx} className="flex gap-2">
                         <input 
                           type="text"
-                          className="flex-1 bg-white/5 border border-brand-border rounded-lg px-4 py-2 text-xs font-bold text-brand-text-bright focus:border-brand-accent outline-none"
+                          className="w-full bg-white/5 border border-brand-border rounded-xl px-5 py-3 text-sm font-bold text-brand-text-bright focus:border-brand-accent outline-none"
                           value={service}
                           onChange={(e) => {
                             const newServices = [...deptForm.services];
@@ -1076,33 +1325,33 @@ Stay safe.`;
                           }}
                         />
                         <button 
-                          onClick={() => {
-                            const newServices = deptForm.services.filter((_, i) => i !== sidx);
-                            setDeptForm({...deptForm, services: newServices});
-                          }}
-                          className="p-2 text-red-500 hover:bg-red-500/10 rounded-lg transition-all"
+                          type="button"
+                          onClick={() => setDeptForm({...deptForm, services: deptForm.services.filter((_, i) => i !== sidx)})}
+                          className="p-2 text-red-500 hover:bg-red-500/10 rounded-lg"
                         >
-                          <X size={14} />
+                          <X size={16} />
                         </button>
                       </div>
                     ))}
                   </div>
                 </div>
-              </div>
-
-              <div className="flex gap-4 pt-4">
-                <button 
-                  type="button"
-                  onClick={() => {
-                    setSelectedDept(deptForm as DepartmentInfo);
-                    setIsDeptDeleteModalOpen(true);
-                  }}
-                  className="px-6 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest text-red-500 border border-red-500/20 hover:bg-red-500/5 transition-all"
-                >
-                  Terminate Profile
-                </button>
-                <div className="flex-1 flex gap-4">
-                  <button 
+                
+                <div className="space-y-4">
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input 
+                      type="checkbox"
+                      className="w-5 h-5 accent-brand-secondary rounded-lg"
+                      checked={!!deptForm.is_municipal_authorized}
+                      onChange={(e) => setDeptForm({...deptForm, is_municipal_authorized: e.target.checked})}
+                    />
+                    <span className="text-xs font-bold text-brand-text-bright uppercase tracking-widest">
+                      Authorize Municipal Hub Access
+                    </span>
+                  </label>
+                </div>
+                
+                <div className="flex gap-4 pt-6">
+                    <button 
                     type="button"
                     onClick={() => setIsDeptEditModalOpen(false)}
                     className="flex-1 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest text-brand-text-dim border border-brand-border hover:bg-white/5 transition-all"
@@ -1110,14 +1359,13 @@ Stay safe.`;
                     Abort
                   </button>
                   <button 
-                    type="button"
-                    onClick={handleUpdateDept}
+                    type="submit"
                     className="flex-1 py-4 rounded-2xl bg-brand-secondary text-white text-[10px] font-black uppercase tracking-widest shadow-xl shadow-brand-secondary/20 hover:bg-brand-secondary/90 transition-all font-display flex items-center justify-center gap-3"
                   >
                     <Save size={16} /> Finalize Changes
                   </button>
                 </div>
-              </div>
+              </form>
             </motion.div>
           </div>
         )}

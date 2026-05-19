@@ -202,10 +202,6 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
         { label: "Municipal Directory", to: '/directory' },
         { label: "Barangays", to: '/barangays' },
         { label: "Vision, Mission & Goal", to: '#' },
-        { label: "Development Thrust", to: '#' },
-        { label: "Citizen Charter", to: '/services' },
-        { label: "Service Pledge", to: '#' },
-        { label: "Quality Management System", to: '#' }
       ] 
     },
     { 
@@ -213,8 +209,6 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
       dropdown: [
         { label: "Executive: Orders", to: '#' },
         { label: "Legislative: Ordinances", to: '#' },
-        { label: "Judiciary", to: '#' },
-        { label: "NGA's", to: '#' }
       ] 
     },
     { 
@@ -223,7 +217,6 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
         { label: "Tourist Circuit", to: '#' },
         { label: "Eatventures", to: '#' },
         { label: "Investment Incentives", to: '#' },
-        { label: "Local Products", to: '#' },
         { label: "Investment profile", to: '#' },
         { label: "Tourist Arrivals", to: '#' }
       ] 
@@ -239,17 +232,8 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-brand-bg flex items-center justify-center">
-        <div className="flex flex-col items-center gap-6">
-          <div className="relative w-20 h-20">
-            <div className="absolute inset-0 border-4 border-brand-accent/20 rounded-full"></div>
-            <div className="absolute inset-0 border-4 border-t-brand-accent rounded-full animate-spin"></div>
-          </div>
-          <div className="flex flex-col items-center">
-            <span className="text-[10px] font-black uppercase tracking-[0.4em] text-brand-text-dim animate-pulse">Synchronizing Terminal</span>
-            <span className="text-[8px] text-brand-text-dim/50 uppercase tracking-widest mt-2">Identity Verification Protocol active</span>
-          </div>
-        </div>
+      <div className="min-h-screen bg-brand-bg flex flex-col items-center justify-center">
+        <div className="text-white">Loading... {JSON.stringify({ isAdmin, profile: profile?.role })}</div>
       </div>
     );
   }
@@ -682,7 +666,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
         tabIndex={-1}
       >
         <AnimatePresence mode="wait">
-          {!needsVerification ? (
+          {(!needsVerification || isAdmin) ? (
             <motion.div
               key={location.pathname}
               initial={{ opacity: 0, y: 10 }}
