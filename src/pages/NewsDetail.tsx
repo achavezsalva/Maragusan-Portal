@@ -46,7 +46,7 @@ const NewsDetail = () => {
           .eq('is_municipal', true)
           .neq('id', id)
           .order('created_at', { ascending: false })
-          .limit(3);
+          .limit(6);
         
         setRecentNews(recent || []);
       } catch (err) {
@@ -96,7 +96,7 @@ const NewsDetail = () => {
   };
 
   return (
-    <div className="bg-[#f4f7f9] min-h-screen pb-32">
+    <div className="bg-[#FFFFFF] min-h-screen pb-32">
       {/* Photo Lightbox */}
       <AnimatePresence>
         {lightbox.open && allImages.length > 0 && (
@@ -157,17 +157,17 @@ const NewsDetail = () => {
           <div className="max-w-4xl mx-auto space-y-8">
             <Link 
               to="/" 
-              className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-brand-text-dim hover:text-brand-accent transition-colors group"
+              className="inline-flex items-center gap-3 px-6 py-4 rounded-2xl bg-white border border-brand-border text-[10px] font-black uppercase tracking-widest text-brand-text-dim hover:text-brand-accent hover:border-brand-accent transition-all shadow-sm group"
             >
-              <ArrowLeft size={14} className="group-hover:-translate-x-1 transition-transform" /> 
+              <ArrowLeft size={16} className="group-hover:-translate-x-1 transition-transform" /> 
               Back to Home Portal
             </Link>
 
             <div className="space-y-6">
-              <div className="flex items-center gap-3">
-                <div className="inline-flex items-center gap-2 py-1 px-3 bg-brand-accent/10 rounded-lg text-brand-accent text-[10px] font-black uppercase tracking-widest border border-brand-accent/20">
-                  <Star size={12} fill="currentColor" />
-                  MUNICIPAL_NEWS_ENTRY
+              <div className="flex items-center gap-4">
+                <div className="inline-flex items-center gap-3 py-2.5 px-5 bg-brand-accent/10 rounded-2xl text-brand-accent text-xs font-black uppercase tracking-widest border border-brand-accent/20 shadow-sm">
+                  <Star size={14} fill="currentColor" />
+                  MUNICIPAL NEWS ENTRY
                 </div>
                 <div className="h-px flex-1 bg-brand-border" />
               </div>
@@ -196,8 +196,9 @@ const NewsDetail = () => {
       </div>
 
       {/* Content Section */}
-      <div className="container-custom mt-12">
-        <div className="grid lg:grid-cols-12 gap-12 max-w-7xl mx-auto">
+      <div className="bg-white border-t border-brand-border -mt-px pb-32">
+        <div className="container-custom pt-12">
+          <div className="grid lg:grid-cols-12 gap-12 max-w-7xl mx-auto">
           {/* Main Article */}
           <div className="lg:col-span-8 space-y-12">
             <motion.div 
@@ -285,16 +286,27 @@ const NewsDetail = () => {
                   <Link 
                     key={news.id} 
                     to={`/news/${news.id}`}
-                    className="group block space-y-3"
+                    className="group flex gap-4"
                   >
-                    <div className="text-[9px] font-black text-brand-accent uppercase tracking-widest">
-                      {news.created_at ? format(new Date(news.created_at), 'dd MMM yyyy') : 'Recent'}
-                    </div>
-                    <h4 className="text-sm font-bold text-slate-800 group-hover:text-brand-accent transition-colors line-clamp-2 uppercase leading-tight">
-                      {news.title}
-                    </h4>
-                    <div className="flex items-center gap-1 text-[9px] font-black uppercase tracking-widest text-brand-text-dim opacity-0 group-hover:opacity-100 transition-all group-hover:translate-x-1">
-                      Read Article <ChevronRight size={10} />
+                    {news.image_url && (
+                      <div className="w-16 h-16 shrink-0 rounded-xl overflow-hidden border border-brand-border bg-slate-100 shadow-sm">
+                        <img 
+                          src={news.image_url} 
+                          alt={news.title} 
+                          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" 
+                        />
+                      </div>
+                    )}
+                    <div className="space-y-2 flex-1">
+                      <div className="text-[9px] font-black text-brand-accent uppercase tracking-widest">
+                        {news.created_at ? format(new Date(news.created_at), 'dd MMM yyyy') : 'Recent'}
+                      </div>
+                      <h4 className="text-sm font-bold text-slate-800 group-hover:text-brand-accent transition-colors line-clamp-2 uppercase leading-tight">
+                        {news.title}
+                      </h4>
+                      <div className="flex items-center gap-1 text-[9px] font-black uppercase tracking-widest text-brand-text-dim opacity-0 group-hover:opacity-100 transition-all group-hover:translate-x-1">
+                        Read News <ChevronRight size={10} />
+                      </div>
                     </div>
                   </Link>
                 )) : (
@@ -319,6 +331,7 @@ const NewsDetail = () => {
         </div>
       </div>
     </div>
+  </div>
   );
 };
 

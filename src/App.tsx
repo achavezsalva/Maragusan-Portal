@@ -199,7 +199,6 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
       label: 'The Municipality', 
       dropdown: [
         { label: "Officials", to: '/officials' },
-        { label: "Municipal Directory", to: '/directory' },
         { label: "Barangays", to: '/barangays' },
         { label: "Vision, Mission & Goal", to: '#' },
       ] 
@@ -224,7 +223,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
     { label: 'About Maragusan', to: '/about' },
     { label: 'Contact Us', 
       dropdown: [
-        { label: "Feedback", to: '/feedback' }
+        { label: "Directory", to: '/directory' }
       ] 
     },
   ];
@@ -282,6 +281,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
             <div className="text-right flex flex-col items-end drop-shadow-lg">
                <div className="text-[10px] font-black uppercase tracking-[0.3em] text-[#FFD700]">Official Digital Portal of</div>
                <div className="text-xs font-bold text-white uppercase tracking-widest mt-1">{MUNICIPAL_BRANDING.fullName}</div>
+               <div className="text-[10px] font-black uppercase tracking-[0.3em] text-[#FFD700]">{MUNICIPAL_BRANDING.province}</div>
             </div>
           </div>
         </div>
@@ -501,16 +501,16 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
                     <Shield size={48} />
                   </div>
                   <div className="space-y-4">
-                    <h2 className="text-3xl font-display text-brand-text-bright uppercase tracking-tight leading-none italic">Clearance Denied</h2>
-                    <p className="text-[10px] text-red-500 uppercase tracking-[0.4em] font-black">Identity Not Recognized</p>
+                    <h2 className="text-3xl font-display text-brand-text-bright uppercase tracking-tight leading-none italic">Access Denied</h2>
+                    <p className="text-[10px] text-red-500 uppercase tracking-[0.4em] font-black">Authentication Protocol Error</p>
                   </div>
                   
                   <div className="bg-red-500/5 p-8 rounded-3xl border border-red-500/10 w-full text-center space-y-4">
                     <p className="text-sm font-medium text-brand-text-bright leading-relaxed">
-                      Administrative Credentials Required. Your current identity is not registered in the Municipal Personnel Ledger.
+                      You have no access of this portal, please contact website administrator.
                     </p>
                     <p className="text-[10px] text-brand-text-dim uppercase tracking-widest leading-relaxed font-bold">
-                      If you are an authorized employee, please contact the System Administrator to initialize your portal clearance. Public access is restricted to verified personnel only.
+                      Public access to our digital infrastructure is restricted to authorized municipal personnel. If you are a visitor, you may continue to browse the home portal freely without signing in.
                     </p>
                   </div>
                 </div>

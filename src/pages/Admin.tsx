@@ -14,6 +14,7 @@ import {
   Check,
   Building,
   Edit2,
+  Trash2,
   Save,
   Phone,
   MapPin,
@@ -34,9 +35,11 @@ import { ALL_DEPARTMENTS, ALL_DEPT_DETAILS, DepartmentInfo } from '../constants/
 
 const Admin: React.FC = () => {
   const { user, profile, isAdmin, loading } = useAuth();
-  const [activeTab, setActiveTab] = useState<'personnel' | 'departments'>('personnel');
+  const [activeTab, setActiveTab] = useState<'personnel' | 'departments' | 'publications'>('personnel');
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [departments, setDepartments] = useState<DepartmentInfo[]>([]);
+  const [announcements, setAnnouncements] = useState<any[]>([]);
+  const [loadingAnn, setLoadingAnn] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState<string>('all');
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
@@ -138,11 +141,34 @@ const Admin: React.FC = () => {
     }
   };
 
+  const fetchAnnouncements = async () => {
+    try {
+      setLoadingAnn(true);
+      const { data, error } = await supabase
+        .from('announcements')
+        .select(`
+          *,
+          departments (
+            name
+          )
+        `)
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      setAnnouncements(data || []);
+    } catch (err) {
+      console.error("Failed to fetch announcements:", err);
+    } finally {
+      setLoadingAnn(false);
+    }
+  };
+
   useEffect(() => {
     if (!isAdmin) return;
 
     fetchUsers();
     fetchDepts();
+    fetchAnnouncements();
 
     const usersChannel = supabase
       .channel('admin-users-changes')
@@ -158,9 +184,17 @@ const Admin: React.FC = () => {
       })
       .subscribe();
 
+    const annChannel = supabase
+      .channel('admin-ann-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'announcements' }, () => {
+        fetchAnnouncements();
+      })
+      .subscribe();
+
     return () => {
       supabase.removeChannel(usersChannel);
       supabase.removeChannel(deptsChannel);
+      supabase.removeChannel(annChannel);
     };
   }, [isAdmin, profile]);
 
@@ -339,12 +373,40 @@ const Admin: React.FC = () => {
       
       await fetchDepts();
       
+      setRegistrationStatus({
+        show: true,
+        success: true,
+        message: `Municipal Sector purged. All associated authority profiles have been de-linked.`
+      });
+      
       setIsDeptDeleteModalOpen(false);
       setIsDeptEditModalOpen(false);
       setSelectedDept(null);
       setDeptForm(null);
     } catch (err: any) {
       handleAdminError(err, "deleting department");
+    }
+  };
+
+  const handleDeleteAnnouncement = async (id: string) => {
+    if (!window.confirm("Are you sure you want to permanently delete this publication/update? This action cannot be undone.")) return;
+
+    try {
+      const { error } = await supabase
+        .from('announcements')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+
+      setRegistrationStatus({
+        show: true,
+        success: true,
+        message: 'Publication permanently removed from the municipal ledger.'
+      });
+      fetchAnnouncements();
+    } catch (err: any) {
+      handleAdminError(err, "deleting publication");
     }
   };
 
@@ -560,6 +622,15 @@ const Admin: React.FC = () => {
         >
           Department Profiles
           {activeTab === 'departments' && <motion.div layoutId="tab-underline" className="absolute bottom-0 left-0 right-0 h-1 bg-brand-accent rounded-t-full" />}
+        </button>
+        <button 
+          onClick={() => setActiveTab('publications')}
+          className={`px-8 py-4 text-[11px] font-black uppercase tracking-[0.2em] transition-all relative ${
+            activeTab === 'publications' ? 'text-brand-accent' : 'text-brand-text-dim hover:text-brand-text-bright'
+          }`}
+        >
+          Municipal Updates
+          {activeTab === 'publications' && <motion.div layoutId="tab-underline" className="absolute bottom-0 left-0 right-0 h-1 bg-brand-accent rounded-t-full" />}
         </button>
       </div>
 
@@ -790,7 +861,7 @@ Stay safe.`;
             </div>
           </div>
         </>
-      ) : (
+      ) : activeTab === 'departments' ? (
         <>
           {/* Departments View */}
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
@@ -825,20 +896,6 @@ Stay safe.`;
                 <Plus size={18} /> New Sector
               </button>
               <button 
-                onClick={() => {
-                  setEditingAnnId(null);
-                  setAnnTitle('');
-                  setAnnContent('');
-                  setAnnImageUrl('');
-                  setAnnImages([]);
-                  setIsAnnMunicipal(false);
-                  setShowAnnModal(true);
-                }}
-                className="flex items-center gap-3 bg-white/5 border border-brand-border text-brand-text-dim px-8 py-4 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:text-brand-accent hover:border-brand-accent transition-all"
-              >
-                <Megaphone size={18} /> Create Publication
-              </button>
-              <button 
                 onClick={() => setIsSyncConfirmModalOpen(true)}
                 disabled={isSyncing}
                 className="flex items-center gap-3 bg-white/5 border border-brand-border text-brand-text-dim px-8 py-4 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:text-brand-accent hover:border-brand-accent transition-all disabled:opacity-50"
@@ -871,12 +928,23 @@ Stay safe.`;
                     <div className="w-10 h-10 bg-brand-accent/10 rounded-xl flex items-center justify-center text-brand-accent">
                       <Building2 size={20} />
                     </div>
-                    <button 
-                      onClick={() => handleDeptEditClick(dept)}
-                      className="p-2 text-brand-text-dim hover:text-brand-accent hover:bg-brand-accent/10 rounded-lg transition-all"
-                    >
-                      <Edit2 size={16} />
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button 
+                        onClick={() => handleDeptEditClick(dept)}
+                        className="p-2 text-brand-text-dim hover:text-brand-accent hover:bg-brand-accent/10 rounded-lg transition-all"
+                      >
+                        <Edit2 size={16} />
+                      </button>
+                      <button 
+                        onClick={() => {
+                          setSelectedDept(dept);
+                          setIsDeptDeleteModalOpen(true);
+                        }}
+                        className="p-2 text-brand-text-dim hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
                   </div>
                   <h3 className="text-lg font-display text-brand-text-bright uppercase tracking-tight mb-1">{dept.name}</h3>
                   <p className="text-[10px] text-brand-text-dim uppercase tracking-widest font-black mb-4">{dept.head}</p>
@@ -911,7 +979,132 @@ Stay safe.`;
             </div>
           )}
         </>
-      )}
+      ) : activeTab === 'publications' ? (
+        <>
+          {/* Announcements View */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-4">
+            <div className="flex items-center gap-6">
+              <div className="w-16 h-16 bg-amber-500 rounded-2xl flex items-center justify-center text-white shadow-xl shadow-amber-500/20">
+                <Megaphone size={32} />
+              </div>
+              <div>
+                <h1 className="text-4xl font-display uppercase tracking-tight text-brand-text-bright leading-none">News & Publication Ledger</h1>
+                <p className="text-[10px] text-brand-text-dim uppercase tracking-[0.3em] font-black italic mt-2">Oversee and Purge Historical News Feed Entries</p>
+              </div>
+            </div>
+            <button 
+              onClick={() => {
+                setEditingAnnId(null);
+                setAnnTitle('');
+                setAnnContent('');
+                setAnnImageUrl('');
+                setAnnImages([]);
+                setIsAnnMunicipal(false);
+                setShowAnnModal(true);
+              }}
+              className="flex items-center gap-3 bg-brand-accent text-white px-8 py-4 rounded-2xl text-[11px] font-black uppercase tracking-widest shadow-xl shadow-brand-accent/20 hover:bg-brand-accent/90 transition-all font-display"
+            >
+              <Plus size={18} /> Create New Update
+            </button>
+          </div>
+
+          <div className="relative w-full">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-brand-text-dim" size={18} />
+            <input 
+              type="text" 
+              placeholder="Search feed by title or content..." 
+              className="w-full bg-white/5 border border-brand-border rounded-xl py-3 pl-12 pr-4 text-brand-text-bright focus:outline-none focus:border-brand-accent transition-colors placeholder:text-brand-text-dim/50 uppercase tracking-[0.05em] text-xs font-bold"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+
+          <div className="glass-card overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="border-b border-brand-border bg-white/5">
+                    <th className="px-6 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-brand-text-dim">Update Entry</th>
+                    <th className="px-6 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-brand-text-dim">Origin Sector</th>
+                    <th className="px-6 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-brand-text-dim">Status</th>
+                    <th className="px-6 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-brand-text-dim">Date Posted</th>
+                    <th className="px-6 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-brand-text-dim text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-brand-border/50">
+                  {announcements.filter(a => 
+                    a.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                    a.content.toLowerCase().includes(searchTerm.toLowerCase())
+                  ).map((ann) => (
+                    <tr key={ann.id} className="hover:bg-brand-accent/5 transition-colors group">
+                      <td className="px-6 py-5">
+                        <div className="flex items-center gap-4 max-w-md">
+                          <div className="w-12 h-12 rounded-lg bg-brand-bg border border-brand-border overflow-hidden shrink-0 flex items-center justify-center text-brand-text-dim">
+                            {ann.image_url ? (
+                              <img src={ann.image_url} alt="" className="w-full h-full object-cover" />
+                            ) : (
+                              <Megaphone size={16} />
+                            )}
+                          </div>
+                          <div className="overflow-hidden">
+                            <div className="text-sm font-bold text-brand-text-bright tracking-tight truncate uppercase">
+                              {ann.title}
+                            </div>
+                            <div className="text-[9px] text-brand-text-dim font-medium line-clamp-1 mt-1 italic">
+                              {ann.content}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-5">
+                        <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-brand-text-dim mb-1">
+                          <Building2 size={12} className="text-brand-accent" />
+                          {ann.departments?.name || "Municipal Admin"}
+                        </div>
+                      </td>
+                      <td className="px-6 py-5">
+                        <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border ${
+                          ann.is_municipal 
+                            ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' 
+                            : 'bg-brand-secondary/10 text-brand-secondary border-brand-secondary/20'
+                        }`}>
+                          {ann.is_municipal ? 'Municipal Hub' : 'Sector Only'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-5 text-[10px] font-black text-brand-text-dim">
+                        {ann.created_at ? new Date(ann.created_at).toLocaleDateString() : 'N/A'}
+                      </td>
+                      <td className="px-6 py-5 text-right">
+                        <button 
+                          onClick={() => {
+                            setEditingAnnId(ann.id);
+                            setAnnTitle(ann.title);
+                            setAnnContent(ann.content);
+                            setAnnImageUrl(ann.image_url || '');
+                            setAnnImages(ann.images || []);
+                            setIsAnnMunicipal(ann.is_municipal);
+                            setPostDeptId(ann.department_id || '');
+                            setShowAnnModal(true);
+                          }}
+                          className="p-2 text-brand-text-dim hover:text-brand-accent hover:bg-brand-accent/10 rounded-lg transition-all mr-2"
+                        >
+                          <Edit2 size={18} />
+                        </button>
+                        <button 
+                          onClick={() => handleDeleteAnnouncement(ann.id)}
+                          className="p-2 text-brand-text-dim hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all"
+                        >
+                          <X size={18} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      ) : null}
 
       {/* User Edit Modal */}
       <AnimatePresence>

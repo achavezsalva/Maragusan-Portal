@@ -123,7 +123,7 @@ const DepartmentDetail: React.FC = () => {
         <div className="space-y-4">
           <Link 
             to="/directory" 
-            className="inline-flex items-center gap-2 text-brand-accent hover:text-brand-text-bright transition-colors text-[10px] font-black uppercase tracking-widest"
+            className="inline-flex items-center gap-2 text-brand-accent hover:text-brand-text-bright transition-colors text-[14px] font-black uppercase tracking-widest"
           >
             <ArrowLeft size={14} /> Back to Directory
           </Link>

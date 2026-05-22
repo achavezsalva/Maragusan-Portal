@@ -34,6 +34,7 @@ import { format } from 'date-fns';
 import { useAuth } from '../hooks/useAuth';
 
 const HERO_SLIDES = [
+  'https://imglink.cc/cdn/CdogaxgBi0.jpg',
   '/img/slide1.jpg',
   '/img/slide2.jpg',
   '/img/slide3.jpg',
@@ -52,6 +53,8 @@ const LandingPage = () => {
   const [currentSlide, setCurrentSlide] = React.useState(0);
   const [news, setNews] = useState<any[]>([]);
   const [loadingNews, setLoadingNews] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 6;
 
   React.useEffect(() => {
     const timer = setInterval(() => {
@@ -108,6 +111,11 @@ const LandingPage = () => {
     };
   }, []);
 
+  const totalPages = Math.ceil(news.length / itemsPerPage);
+  const indexOfLastItem = currentPage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const currentNews = news.slice(indexOfFirstItem, indexOfLastItem);
+
   return (
     <div className="space-y-32">
       {/* Hero Section */}
@@ -157,22 +165,11 @@ const LandingPage = () => {
               services and fosters absolute transparency for every <span className="text-brand-secondary text-2xl md:text-3xl font-black italic inline-block transform hover:scale-110 transition-transform cursor-default ml-1">MARAGUSANON</span>
             </p>
           </motion.div>
-
-          <div className="flex flex-col sm:flex-row justify-center gap-6 pt-6">
-            <button 
-              onClick={() => navigate('/directory')} 
-              className="btn-primary px-10 py-5 text-base cursor-pointer hover:scale-105 active:scale-95 transition-transform flex items-center gap-3 mx-auto shadow-2xl focus:ring-4 focus:ring-brand-accent/50 outline-none"
-              aria-label="Explore Institutional Directory"
-            >
-              Explore Institutional Directory
-              <ArrowRight size={18} aria-hidden="true" />
-            </button>
-          </div>
         </div>
       </section>
 
       {/* Municipal News & Activities */}
-      <section className="pb-32 bg-white relative !mt-0">
+      <section id="updates-feed" className="pb-32 bg-white relative !mt-0">
         <div className="container-custom">
           <div className="flex flex-col items-center text-center space-y-4 mb-20">
             <div className="flex items-center gap-4">
@@ -197,15 +194,15 @@ const LandingPage = () => {
               [1, 2, 3].map(i => (
                 <div key={i} className="h-[450px] bg-white border border-brand-border rounded-xl animate-pulse shadow-sm" />
               ))
-            ) : news.length > 0 ? (
-              news.map((item, idx) => (
+            ) : currentNews.length > 0 ? (
+              currentNews.map((item, idx) => (
                 <motion.article
                   key={item.id}
                   initial={{ opacity: 0, y: 30 }}
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true }}
                   transition={{ delay: (idx % 3) * 0.15 }}
-                  className="group flex flex-col bg-white border border-slate-200 rounded-xl overflow-hidden hover:shadow-2xl transition-all duration-500 cursor-pointer"
+                  className="group flex flex-col bg-white border border-slate-200 rounded-2xl overflow-hidden hover:shadow-2xl transition-all duration-500 cursor-pointer"
                   onClick={() => navigate(`/news/${item.id}`)}
                 >
                   {/* Image Box Container */}
@@ -222,7 +219,7 @@ const LandingPage = () => {
                     />
                     {/* Date Badge */}
                     <div className="absolute top-0 right-0 z-20">
-                      <div className="bg-[#FFD700] p-4 text-center min-w-[70px] shadow-lg">
+                      <div className="bg-[#FFD700] p-4 text-center min-w-[70px] shadow-lg rounded-bl-2xl">
                          <h3 className="text-2xl font-display leading-none text-black">
                            {item.created_at ? format(new Date(item.created_at), 'dd') : '00'}
                          </h3>
@@ -234,8 +231,11 @@ const LandingPage = () => {
                   </div>
 
                   <div className="p-8 space-y-6 flex-1 flex flex-col">
-                    <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-brand-accent">
-                       <Star size={12} fill="currentColor" /> {item.departments?.name || "Official News"}
+                    <div className="flex items-center gap-3">
+                      <div className="inline-flex items-center gap-2 py-1 px-3 bg-brand-accent/10 rounded-full text-brand-accent text-[10px] font-black uppercase tracking-widest border border-brand-accent/20">
+                         <Star size={12} fill="currentColor" /> {item.departments?.name || "Official News"}
+                      </div>
+                      <div className="h-px flex-1 bg-slate-100" />
                     </div>
                     
                     <h4 className="text-xl font-display tracking-tight leading-[1.3] text-slate-800 group-hover:text-brand-accent transition-colors line-clamp-3 uppercase">
@@ -246,14 +246,19 @@ const LandingPage = () => {
                       {item.content}
                     </p>
 
-                    <ul className="flex items-center gap-6 pt-6 mt-auto border-t border-slate-100">
-                      <li className="flex items-center gap-2 text-[9px] font-black uppercase tracking-widest text-brand-text-dim hover:text-brand-accent transition-colors">
-                        <User size={12} /> Info Officer
-                      </li>
-                      <li className="flex items-center gap-2 text-[9px] font-black uppercase tracking-widest text-brand-text-dim">
-                        <MessageSquare size={12} /> 0 Comments
-                      </li>
-                    </ul>
+                    <div className="flex items-center justify-between pt-6 mt-auto border-t border-slate-100">
+                      <ul className="flex items-center gap-4">
+                        <li className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-brand-text-dim">
+                          <User size={12} /> PIO Officer
+                        </li>
+                        <li className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-brand-text-dim">
+                          <MessageSquare size={12} /> 0
+                        </li>
+                      </ul>
+                      <div className="text-brand-accent font-black uppercase text-[9px] tracking-widest flex items-center gap-2">
+                        Details <ArrowRight size={12} />
+                      </div>
+                    </div>
                   </div>
                 </motion.article>
               ))
@@ -268,6 +273,53 @@ const LandingPage = () => {
               </div>
             )}
           </div>
+
+          {/* Pagination Controls */}
+          {news.length > itemsPerPage && !loadingNews && (
+            <div className="flex items-center justify-center gap-4 mt-20">
+              <button
+                onClick={() => {
+                  setCurrentPage(prev => Math.max(prev - 1, 1));
+                  window.scrollTo({ top: document.getElementById('updates-feed')?.offsetTop ? document.getElementById('updates-feed')!.offsetTop - 100 : 800, behavior: 'smooth' });
+                }}
+                disabled={currentPage === 1}
+                className="px-6 py-4 rounded-2xl border border-brand-border text-[10px] font-black uppercase tracking-widest text-brand-text-dim hover:text-brand-accent transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                Previous Updates
+              </button>
+              
+              <div className="flex items-center gap-2">
+                {[...Array(totalPages)].map((_, i) => (
+                  <button
+                    key={i}
+                    onClick={() => {
+                      setCurrentPage(i + 1);
+                      window.scrollTo({ top: document.getElementById('updates-feed')?.offsetTop ? document.getElementById('updates-feed')!.offsetTop - 100 : 800, behavior: 'smooth' });
+                    }}
+                    className={`w-10 h-10 rounded-full text-[10px] font-black flex items-center justify-center transition-all ${
+                      currentPage === i + 1 
+                        ? 'bg-brand-accent text-white shadow-lg' 
+                        : 'border border-brand-border text-brand-text-dim hover:border-brand-accent'
+                    }`}
+                  >
+                    {i + 1}
+                  </button>
+                ))}
+              </div>
+
+              <button
+                onClick={() => {
+                  setCurrentPage(prev => Math.min(prev + 1, totalPages));
+                  window.scrollTo({ top: document.getElementById('updates-feed')?.offsetTop ? document.getElementById('updates-feed')!.offsetTop - 100 : 800, behavior: 'smooth' });
+                }}
+                disabled={currentPage === totalPages}
+                className="px-6 py-4 rounded-2xl bg-brand-accent text-white text-[10px] font-black uppercase tracking-widest shadow-xl shadow-brand-accent/20 hover:scale-105 transition-all flex items-center gap-2"
+              >
+                Next Updates
+                <ChevronRight size={14} />
+              </button>
+            </div>
+          )}
         </div>
       </section>
 

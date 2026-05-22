@@ -250,7 +250,7 @@ const About = () => {
               </p>
             </div>
             <div className="grid grid-cols-2 gap-4">
-               {['Bisaya', 'Mansaka', 'Mandaya', 'Tagalog', 'English'].map((lang) => (
+               {['Bisaya', 'Mansaka', 'Mandaya', 'Muslim', 'Tagalog', 'English', 'Ilonggo', 'Waray', 'Ilocano'].map((lang) => (
                   <div key={lang} className="flex items-center gap-3 px-6 py-3 bg-white border border-brand-border rounded-2xl text-xs font-bold text-brand-text-bright shadow-xs hover:border-brand-accent transition-colors cursor-default">
                      <Users size={14} className="text-brand-accent" aria-hidden="true" />
                      {lang}
