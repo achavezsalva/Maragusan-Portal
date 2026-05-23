@@ -15,6 +15,7 @@ import { motion } from 'motion/react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { DEPARTMENT_CATEGORIES, DepartmentInfo } from '../constants/departments';
+import OfficeMap from '../components/OfficeMap';
 
 const Directory: React.FC = () => {
   const [dynamicDepts, setDynamicDepts] = useState<DepartmentInfo[]>([]);
@@ -78,7 +79,16 @@ const Directory: React.FC = () => {
           Synchronizing sector metadata...
         </div>
       ) : (
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8" role="list" aria-label="Department categories">
+        <div className="space-y-16">
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+          >
+            <OfficeMap departments={dynamicDepts.length > 0 ? dynamicDepts : categories.flatMap(c => c.deptsList)} />
+          </motion.div>
+
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8" role="list" aria-label="Department categories">
           {categories.map((category, idx) => (
             <motion.div 
               key={idx}
@@ -113,6 +123,7 @@ const Directory: React.FC = () => {
               </ul>
             </motion.div>
           ))}
+          </div>
         </div>
       )}
     </div>
